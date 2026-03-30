@@ -1,0 +1,10 @@
+node_modules/
+data/
+logs/
+.env
+*.png
+*.jpg
+
+# Frontend
+admin/node_modules/
+admin/dist/
