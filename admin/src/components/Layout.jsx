@@ -6,6 +6,11 @@ const SIDEBAR_GROUPS = [
   {
     label: 'REPORT BOT',
     module: 'report',
+    color: '#3b82f6',      // blue
+    bgActive: 'bg-blue-600/20',
+    textActive: 'text-blue-400',
+    headerBg: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
     items: [
       { to: '/report', label: 'Dashboard', end: true },
       { to: '/report/brands', label: 'Brands' },
@@ -19,6 +24,11 @@ const SIDEBAR_GROUPS = [
   {
     label: 'KEUANGAN',
     module: 'finance',
+    color: '#10b981',      // emerald
+    bgActive: 'bg-emerald-600/20',
+    textActive: 'text-emerald-400',
+    headerBg: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30',
     items: [
       { to: '/finance', label: 'Dashboard', end: true },
       { to: '/finance/transactions', label: 'Transaksi' },
@@ -35,6 +45,11 @@ const SIDEBAR_GROUPS = [
   {
     label: 'ADMIN',
     module: 'admin',
+    color: '#f59e0b',      // amber
+    bgActive: 'bg-amber-600/20',
+    textActive: 'text-amber-400',
+    headerBg: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
     role: 'superadmin',
     items: [
       { to: '/admin/users', label: 'Users' },
@@ -49,10 +64,7 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState({})
 
   const handleLogout = () => { logout(); navigate('/login') }
-
-  const toggleGroup = (label) => {
-    setCollapsed(prev => ({ ...prev, [label]: !prev[label] }))
-  }
+  const toggleGroup = (label) => setCollapsed(prev => ({ ...prev, [label]: !prev[label] }))
 
   const canSee = (item) => {
     if (!item.role) return true
@@ -62,35 +74,40 @@ export default function Layout() {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className="w-52 bg-gray-900 text-white flex flex-col shrink-0 overflow-y-auto">
-        <div className="p-3 border-b border-gray-700">
-          <h1 className="text-base font-bold">Ecosystem</h1>
-          <p className="text-[10px] text-gray-400 mt-0.5">{user?.role?.toUpperCase()} — {user?.full_name || user?.username}</p>
+      <aside className="w-52 bg-gray-950 text-white flex flex-col shrink-0 overflow-y-auto">
+        {/* Logo */}
+        <div className="p-3 border-b border-gray-800">
+          <h1 className="text-sm font-bold tracking-wide">ECOSYSTEM</h1>
+          <p className="text-[10px] text-gray-500 mt-0.5">{user?.full_name || user?.username}</p>
         </div>
 
-        <nav className="flex-1 py-2">
+        <nav className="flex-1 py-1.5">
           {SIDEBAR_GROUPS.filter(canSee).map(group => (
-            <div key={group.label} className="mb-1">
-              {/* Group Header */}
+            <div key={group.label} className="mb-0.5">
+              {/* Group Header with color accent */}
               <button
                 onClick={() => toggleGroup(group.label)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider hover:text-gray-300"
+                className={`w-full flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-white/5 transition-colors ${group.headerBg} border-l-2 ${group.borderColor}`}
+                style={{ color: group.color }}
               >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: group.color }} />
                 {group.label}
-                <span className="text-[9px]">{collapsed[group.label] ? '▸' : '▾'}</span>
+                <span className="ml-auto text-[9px] opacity-60">{collapsed[group.label] ? '+' : '-'}</span>
               </button>
 
               {/* Items */}
               {!collapsed[group.label] && (
-                <div className="space-y-px">
+                <div className="py-0.5">
                   {group.items.filter(canSee).map(item => (
                     <NavLink
                       key={item.to}
                       to={item.to}
                       end={item.end}
                       className={({ isActive }) =>
-                        `block px-3 py-1.5 text-xs transition-colors ${
-                          isActive ? 'bg-gray-700 text-white font-medium' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                        `block pl-7 pr-3 py-1.5 text-[11px] transition-colors border-l-2 ${
+                          isActive
+                            ? `${group.bgActive} ${group.textActive} font-semibold ${group.borderColor}`
+                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border-transparent'
                         }`
                       }
                     >
@@ -103,8 +120,10 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="p-2 border-t border-gray-700">
-          <button onClick={handleLogout} className="w-full text-left text-[11px] text-gray-500 hover:text-white px-2 py-1">
+        {/* Footer */}
+        <div className="p-2.5 border-t border-gray-800 flex items-center justify-between">
+          <span className="text-[10px] text-gray-600 uppercase">{user?.role}</span>
+          <button onClick={handleLogout} className="text-[10px] text-gray-600 hover:text-red-400 transition-colors">
             Logout
           </button>
         </div>
