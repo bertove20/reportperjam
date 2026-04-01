@@ -92,6 +92,49 @@ export async function fetchAsia77Regis(brandKey, domain, dateDDMMYYYY, userId, c
 }
 
 /**
+ * Fetch SEMUA member dengan join_time untuk satu tanggal (full pagination)
+ * Dipakai untuk backfill REGIS per jam dari data historis.
+ * @returns {Array} [{join_time, username, ...}, ...]
+ */
+export async function fetchAllMembersWithTime(brandKey, domain, dateDDMMYYYY, userId, cookieHeaderParam = null) {
+  const cookieHeader = getCookieHeader(brandKey, cookieHeaderParam);
+  if (!cookieHeader) throw new Error(`No cookies for ${brandKey}`);
+
+  const url = `https://${domain}/memberlist`;
+  const members = [];
+  let page = 1;
+  const limit = 200;
+
+  while (true) {
+    const response = await gotScraping.post(url, {
+      json: {
+        idus: userId,
+        filter: { fs: [dateDDMMYYYY, dateDDMMYYYY] },
+        sort: { usnm: ['asc'] },
+        limit,
+        page,
+      },
+      headers: { Cookie: cookieHeader },
+      headerGeneratorOptions: {
+        browsers: [{ name: 'chrome', minVersion: 120 }],
+        operatingSystems: ['macos'],
+      },
+      responseType: 'json',
+      timeout: { request: 30000 },
+    });
+
+    const batch = response.body?.usls || [];
+    members.push(...batch);
+
+    if (batch.length < limit) break;
+    page++;
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return members;
+}
+
+/**
  * Keepalive — panggil setiap 15 menit supaya session tidak expire
  */
 export async function keepaliveAsia77(brandKey, domain, cookieHeaderParam = null) {

@@ -32,6 +32,17 @@ export default function BrandList() {
     alert(`Fetch started for ${key}`)
   }
 
+  const handleLogin = async (key, name) => {
+    alert(`Browser akan terbuka untuk login ${name}.\n\nLogin manual di browser, setelah masuk dashboard tunggu cookie otomatis tercapture.`)
+    try {
+      const result = await brandsApi.login(key)
+      alert(`Login berhasil! Cookie ${name} tersimpan.`)
+      queryClient.invalidateQueries({ queryKey: ['brands'] })
+    } catch (err) {
+      alert(`Login gagal: ${err.message}`)
+    }
+  }
+
   if (isLoading) return <div className="text-gray-500">Loading...</div>
 
   return (
@@ -79,6 +90,11 @@ export default function BrandList() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex gap-1 justify-end">
+                    {brand.engine === 'asia77' && (
+                      <button onClick={() => handleLogin(brand.key, brand.name)} className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200">
+                        Login
+                      </button>
+                    )}
                     <button onClick={() => handleTest(brand.key)} className="px-2 py-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200">
                       Test
                     </button>

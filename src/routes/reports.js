@@ -13,17 +13,26 @@ export default async function reportRoutes(app) {
       return reply.code(400).send({ error: 'brand and date required' });
     }
 
-    // Calculate yesterday
-    const d = new Date(date + 'T00:00:00');
+    // Calculate yesterday (use T12:00 to avoid timezone date shift)
+    const d = new Date(date + 'T12:00:00');
     d.setDate(d.getDate() - 1);
     const yesterdayDate = d.toISOString().split('T')[0];
 
     // Get current hour (for determining active row)
     const now = new Date();
     const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Phnom_Penh' });
-    const currentHour = date === todayStr
-      ? parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Phnom_Penh', hour: 'numeric', hour12: false }))
-      : 23;
+    const isToday = date === todayStr;
+    let currentHour;
+
+    if (isToday) {
+      currentHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Phnom_Penh', hour: 'numeric', hour12: false }));
+    } else {
+      // Tanggal lama: cek apakah ada data FINISH (hour=24)
+      const hasFinish = getDb().prepare(
+        'SELECT 1 FROM hourly_snapshots WHERE brand = ? AND date = ? AND hour = 24'
+      ).get(brand, date);
+      currentHour = hasFinish ? 0 : 23; // 0 = show all + FINISH
+    }
 
     const data = getTimBrandData(brand, date, yesterdayDate, currentHour);
     return { ...data, brand, date, yesterdayDate, currentHour };
@@ -63,7 +72,7 @@ export default async function reportRoutes(app) {
     `).all(date);
 
     // Get yesterday's data for comparison
-    const d = new Date(date + 'T00:00:00');
+    const d = new Date(date + 'T12:00:00');
     d.setDate(d.getDate() - 1);
     const yesterdayDate = d.toISOString().split('T')[0];
 
@@ -116,6 +125,72 @@ export default async function reportRoutes(app) {
       brand, from, to,
       dailyTrend: finishRows,
       hourlyBreakdown: hourlyRows,
+    };
+  });
+
+  // GET /api/reports/summary?brand=BRAND_E&date=2026-03-31
+  // Perbandingan: kemarin, 7 hari lalu, 30 hari lalu
+  app.get('/api/reports/summary', async (request, reply) => {
+    const { brand, date } = request.query;
+    if (!brand || !date) {
+      return reply.code(400).send({ error: 'brand and date required' });
+    }
+
+    const d = new Date(date + 'T12:00:00');
+
+    // Helper: get FINISH (hour=24) data for a date
+    const getFinish = (dateStr) => getDb().prepare(
+      'SELECT deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = ? AND date = ? AND hour = 24'
+    ).get(brand, dateStr);
+
+    // Helper: get latest hour data for a date
+    const getLatest = (dateStr) => getDb().prepare(
+      'SELECT MAX(hour) as hour, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = ? AND date = ? AND hour <= 23'
+    ).get(brand, dateStr);
+
+    // Today's latest
+    const todayData = getLatest(date);
+
+    // Yesterday
+    const yd = new Date(date + 'T12:00:00');
+    yd.setDate(yd.getDate() - 1);
+    const yesterdayStr = yd.toISOString().split('T')[0];
+    const yesterdayFinish = getFinish(yesterdayStr);
+
+    // 7 days ago
+    const w = new Date(date + 'T12:00:00');
+    w.setDate(w.getDate() - 7);
+    const weekAgoStr = w.toISOString().split('T')[0];
+    const weekAgoFinish = getFinish(weekAgoStr);
+
+    // 30 days ago
+    const m = new Date(date + 'T12:00:00');
+    m.setDate(m.getDate() - 30);
+    const monthAgoStr = m.toISOString().split('T')[0];
+    const monthAgoFinish = getFinish(monthAgoStr);
+
+    // Avg last 7 days
+    const avg7 = getDb().prepare(`
+      SELECT ROUND(AVG(deposit_accepted_count)) as avgTrx, ROUND(AVG(regis_total)) as avgRegis
+      FROM hourly_snapshots
+      WHERE brand = ? AND date BETWEEN ? AND ? AND hour = 24
+    `).get(brand, weekAgoStr, yesterdayStr);
+
+    // Avg last 30 days
+    const avg30 = getDb().prepare(`
+      SELECT ROUND(AVG(deposit_accepted_count)) as avgTrx, ROUND(AVG(regis_total)) as avgRegis
+      FROM hourly_snapshots
+      WHERE brand = ? AND date BETWEEN ? AND ? AND hour = 24
+    `).get(brand, monthAgoStr, yesterdayStr);
+
+    return {
+      brand, date,
+      today: { trx: todayData?.trx || 0, regis: todayData?.regis || 0, hour: todayData?.hour || 0 },
+      yesterday: { date: yesterdayStr, trx: yesterdayFinish?.trx || 0, regis: yesterdayFinish?.regis || 0 },
+      weekAgo: { date: weekAgoStr, trx: weekAgoFinish?.trx || 0, regis: weekAgoFinish?.regis || 0 },
+      monthAgo: { date: monthAgoStr, trx: monthAgoFinish?.trx || 0, regis: monthAgoFinish?.regis || 0 },
+      avg7days: { trx: avg7?.avgTrx || 0, regis: avg7?.avgRegis || 0 },
+      avg30days: { trx: avg30?.avgTrx || 0, regis: avg30?.avgRegis || 0 },
     };
   });
 

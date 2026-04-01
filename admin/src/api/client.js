@@ -55,6 +55,7 @@ export const brands = {
   delete: (key, hard = false) => request(`/brands/${key}?hard=${hard}`, { method: 'DELETE' }),
   updateCookie: (key, cookieHeader) => request(`/brands/${key}/cookie`, { method: 'PATCH', body: { cookieHeader } }),
   test: (key) => request(`/brands/${key}/test`, { method: 'POST' }),
+  login: (key) => request(`/brands/${key}/login`, { method: 'POST' }),
 };
 
 // Reports
@@ -64,6 +65,7 @@ export const reports = {
   comparison: (date) => request(`/reports/comparison?date=${date}`),
   chartData: (brand, from, to) => request(`/reports/chart-data?brand=${brand}&from=${from}&to=${to}`),
   dates: (brand) => request(`/reports/dates?brand=${brand}`),
+  summary: (brand, date) => request(`/reports/summary?brand=${brand}&date=${date}`),
 };
 
 // Settings
@@ -86,4 +88,7 @@ export const monitoring = {
 export const actions = {
   fetchNow: (brandKey) => request('/actions/fetch-now', { method: 'POST', body: { brandKey } }),
   reportNow: (brandKey) => request('/actions/report-now', { method: 'POST', body: { brandKey } }),
+  fetchFinish: (date) => request('/actions/fetch-finish', { method: 'POST', body: { date } }),
+  backfill: (date, brandKey) => request('/actions/backfill', { method: 'POST', body: { date, brandKey } }),
+  missingHours: (brand, date) => request(`/actions/missing-hours?brand=${brand}&date=${date}`),
 };

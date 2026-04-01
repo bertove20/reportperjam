@@ -26,11 +26,9 @@ export function getTimBrandData(brandKey, todayDate, yesterdayDate, currentHour)
     const todayMap = new Map(todayData.map(r => [r.hour, r]));
     const yesterdayMap = new Map(yesterdayData.map(r => [r.hour, r]));
 
-    // ─── Build 24 rows ───
+    // ─── Build 24 rows (selalu tampilkan semua + Finish) ───
     const rows = [];
-    const hours = currentHour === 0
-      ? [...Array.from({ length: 23 }, (_, i) => i + 1), 24] // FINISH: all rows
-      : Array.from({ length: 23 }, (_, i) => i + 1);          // Regular: 1-23
+    const hours = [...Array.from({ length: 23 }, (_, i) => i + 1), 24]; // 1-23 + Finish
 
     for (let i = 0; i < hours.length; i++) {
       const h = hours[i];
@@ -74,18 +72,28 @@ export function getTimBrandData(brandKey, todayDate, yesterdayDate, currentHour)
       const gapRegis = (todayRegis !== null && yesterdayRegis !== null) ? todayRegis - yesterdayRegis : null;
 
       // Tentukan status row
-      const hasData = todayTrx !== null;
+      const isFuture = currentHour > 0 && (isFinish || h > currentHour);
+      const hasData = (todayTrx !== null || todayRegis !== null) && !isFuture;
       const isCurrent = hasData && (
         (currentHour > 0 && h === currentHour) ||
         (currentHour === 0 && isFinish)
       );
-      const isFuture = !hasData && !isFinish && h > (currentHour || 23);
 
       rows.push({
         label,
         hour: h,
-        trx: { today: todayTrx, yesterday: yesterdayTrx, perHour: perHourTrx, gap: gapTrx },
-        regis: { today: todayRegis, yesterday: yesterdayRegis, perHour: perHourRegis, gap: gapRegis },
+        trx: {
+          today: isFuture ? null : todayTrx,
+          yesterday: yesterdayTrx,
+          perHour: isFuture ? null : perHourTrx,
+          gap: isFuture ? null : gapTrx,
+        },
+        regis: {
+          today: isFuture ? null : todayRegis,
+          yesterday: yesterdayRegis,
+          perHour: isFuture ? null : perHourRegis,
+          gap: isFuture ? null : gapRegis,
+        },
         isCurrent,
         isFuture,
       });

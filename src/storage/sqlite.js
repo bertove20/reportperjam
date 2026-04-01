@@ -141,6 +141,29 @@ export function upsertSnapshot(brand, date, hour, trx, regis) {
   `).run(brand, date, hour, trx, regis);
 }
 
+/**
+ * Upsert yang support TRX null (untuk backfill tanggal lama yang hanya punya REGIS)
+ * Jika TRX null dan sudah ada data, pertahankan TRX yang ada.
+ * TANPA fresh-data guard (backfill boleh overwrite kapan saja).
+ */
+export function upsertSnapshotNullable(brand, date, hour, trx, regis) {
+  const existing = getDb().prepare(
+    'SELECT deposit_accepted_count FROM hourly_snapshots WHERE brand = ? AND date = ? AND hour = ?'
+  ).get(brand, date, hour);
+
+  const finalTrx = trx !== null && trx !== undefined ? trx : (existing?.deposit_accepted_count ?? null);
+
+  getDb().prepare(`
+    INSERT INTO hourly_snapshots (brand, date, hour, deposit_accepted_count, regis_total, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(brand, date, hour)
+    DO UPDATE SET
+      deposit_accepted_count = excluded.deposit_accepted_count,
+      regis_total = excluded.regis_total,
+      updated_at = datetime('now')
+  `).run(brand, date, hour, finalTrx, regis);
+}
+
 export function getSnapshots(brand, date) {
   return getDb().prepare(
     'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = ? AND date = ? ORDER BY hour ASC'

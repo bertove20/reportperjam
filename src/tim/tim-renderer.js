@@ -1,8 +1,5 @@
 /**
  * Tim Report Renderer — HTML → PNG via Puppeteer
- * 
- * Reuse 1 browser instance per batch.
- * browser.close() di finally block SELALU.
  */
 
 import puppeteer from 'puppeteer';
@@ -21,18 +18,22 @@ export async function renderPng(html) {
 
   try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 650, height: 100 }); // height auto-expand
-    await page.setContent(html, { waitUntil: 'domcontentloaded' });
-    
+    await page.setViewport({ width: 650, height: 100 });
+    await page.setContent(html, { waitUntil: 'load' });
+
+    // Tunggu sebentar untuk base64 images render
+    await new Promise(r => setTimeout(r, 300));
+
     const png = await page.screenshot({ fullPage: true, type: 'png' });
     await page.close();
-    
-    // Fallback JPEG jika PNG > 5MB (Telegram limit ~10MB)
+
+    // Fallback JPEG jika PNG > 5MB
     if (png.length > 5 * 1024 * 1024) {
       logger.warn({ size: png.length }, 'PNG too large, using JPEG fallback');
       const page2 = await browser.newPage();
       await page2.setViewport({ width: 650, height: 100 });
-      await page2.setContent(html, { waitUntil: 'domcontentloaded' });
+      await page2.setContent(html, { waitUntil: 'load' });
+      await new Promise(r => setTimeout(r, 300));
       const jpeg = await page2.screenshot({ fullPage: true, type: 'jpeg', quality: 85 });
       await page2.close();
       return jpeg;

@@ -99,6 +99,65 @@ export default async function brandRoutes(app) {
     return { success: true };
   });
 
+  // POST /api/brands/:key/login — buka browser untuk login, return cookie
+  app.post('/api/brands/:key/login', async (request, reply) => {
+    const brand = getBrandByKey(request.params.key);
+    if (!brand) return reply.code(404).send({ error: 'Brand not found' });
+
+    try {
+      const puppeteer = await import('puppeteer');
+      const browser = await puppeteer.default.launch({
+        headless: false,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,800'],
+        defaultViewport: { width: 1280, height: 800 },
+      });
+
+      const page = await browser.newPage();
+
+      // Load existing cookies
+      if (brand.cookie_header) {
+        const cookies = brand.cookie_header.split(';').map(c => {
+          const [name, ...rest] = c.trim().split('=');
+          return { name: name.trim(), value: rest.join('=').trim(), domain: `.${brand.domain}`, path: '/' };
+        }).filter(c => c.name && c.value);
+        if (cookies.length > 0) await page.setCookie(...cookies);
+      }
+
+      await page.goto(`https://${brand.domain}`, { waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
+
+      // Poll for SESSION cookie every 3 seconds (max 5 min)
+      let cookieHeader = null;
+      for (let i = 0; i < 100; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const allCookies = await page.cookies().catch(() => []);
+        const session = allCookies.find(c => c.name === 'SESSION');
+        if (session) {
+          const important = allCookies.filter(c =>
+            c.name === 'SESSION' || c.name === 'cf_clearance' || c.name === 'activeLang'
+          );
+          cookieHeader = important.map(c => `${c.name}=${c.value}`).join('; ');
+
+          // Cek apakah sudah di dashboard (bukan halaman login)
+          const url = page.url();
+          if (url.includes('/user/') || url.includes('/home') || url.includes('/dashboard')) {
+            break;
+          }
+        }
+      }
+
+      await browser.close();
+
+      if (cookieHeader) {
+        updateBrandCookie(brand.key, cookieHeader);
+        return { success: true, message: `Cookie captured and saved for ${brand.name}` };
+      } else {
+        return reply.code(408).send({ success: false, error: 'Login timeout — no SESSION cookie detected in 5 minutes' });
+      }
+    } catch (err) {
+      return reply.code(500).send({ success: false, error: err.message });
+    }
+  });
+
   // POST /api/brands/:key/test — test fetch
   app.post('/api/brands/:key/test', async (request, reply) => {
     const brand = getBrandByKey(request.params.key);

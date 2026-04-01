@@ -20,7 +20,11 @@ async function main() {
   initDatabase();
 
   const now = DateTime.now();
-  const hour = now.hour || 23;
+  const hour = now.hour;
+  if (!hour || hour === 0) {
+    logger.error('Hour is 0 (midnight) — use fetchAllBrandsFinish instead');
+    process.exit(1);
+  }
   const dateStr = now.toDateStr();
   const yesterdayStr = now.yesterday().toDateStr();
 
