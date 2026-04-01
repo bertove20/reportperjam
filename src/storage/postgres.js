@@ -136,7 +136,7 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT NOT NULL,
       module TEXT NOT NULL DEFAULT 'global',
-      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      tenant_id INTEGER NOT NULL DEFAULT 0,
       value TEXT NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT NOW(),
       PRIMARY KEY(key, module, tenant_id)
