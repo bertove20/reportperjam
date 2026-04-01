@@ -1,8 +1,11 @@
 /**
- * Scheduler — Cron jobs untuk fetch data dan kirim report
+ * Scheduler — Multi-tenant cron jobs
+ *
+ * Iterates over all active tenants and runs fetch/report for each.
  */
 
 import cron from 'node-cron';
+import { queryRows } from './storage/postgres.js';
 import { getSetting } from './storage/settings-store.js';
 import { fetchAllBrands, fetchAllBrandsFinish } from './api/fetch-brand.js';
 import { sendTimReports } from './tim/tim-orchestrator.js';
@@ -14,81 +17,83 @@ import { logger } from './logger.js';
 
 const jobs = [];
 
+async function getActiveTenants() {
+  return queryRows('SELECT id, name, slug FROM tenants WHERE is_active = 1');
+}
+
 export async function startScheduler() {
-  const timezone = await getSetting('timezone', 'report') || process.env.TZ || 'Asia/Phnom_Penh';
-  const cronFetch = await getSetting('cron_fetch', 'report') || '0 1-23 * * *';
-  const cronReport = await getSetting('cron_report', 'report') || '5 1-23 * * *';
-  const cronFinish = await getSetting('cron_finish', 'report') || '5 0 * * *';
+  // Use default timezone, individual tenants can override
+  const defaultTz = process.env.TZ || 'Asia/Phnom_Penh';
 
-  // ─── :00 Fetch (jam 1-23) ───
-  jobs.push(cron.schedule(cronFetch, async () => {
-    const now = DateTime.now();
-    const hour = now.hour;
-    const dateStr = now.toDateStr();
+  // ─── :00 Fetch (jam 1-23) — iterate all tenants ───
+  jobs.push(cron.schedule('0 1-23 * * *', async () => {
+    const tenants = await getActiveTenants();
+    for (const tenant of tenants) {
+      try {
+        const tz = await getSetting('timezone', 'report', tenant.id) || defaultTz;
+        const now = DateTime.now();
+        const hour = now.hour;
+        const dateStr = now.toDateStr();
 
-    logger.info({ hour, date: dateStr }, ':00 fetch starting');
-    try {
-      await fetchAllBrands(dateStr, hour);
-      logger.info({ hour }, ':00 fetch complete');
-    } catch (err) {
-      logger.error({ err, hour }, ':00 fetch failed');
+        logger.info({ tenant: tenant.slug, hour }, 'Fetch starting');
+        await fetchAllBrands(dateStr, hour, tenant.id);
+      } catch (err) {
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant fetch failed');
+      }
     }
-  }, { timezone }));
+  }, { timezone: defaultTz }));
 
   // ─── :05 Report (jam 1-23) ───
-  jobs.push(cron.schedule(cronReport, async () => {
-    const now = DateTime.now();
-    const hour = now.hour;
-    const dateStr = now.toDateStr();
-    const yesterdayStr = now.yesterday().toDateStr();
-
-    logger.info({ hour, date: dateStr }, ':05 report starting');
-    try {
-      await sendTimReports(hour, dateStr, yesterdayStr);
-      logger.info({ hour }, ':05 report complete');
-    } catch (err) {
-      logger.error({ err, hour }, ':05 report failed');
+  jobs.push(cron.schedule('5 1-23 * * *', async () => {
+    const tenants = await getActiveTenants();
+    for (const tenant of tenants) {
+      try {
+        const now = DateTime.now();
+        await sendTimReports(now.hour, now.toDateStr(), now.yesterday().toDateStr(), null, tenant.id);
+      } catch (err) {
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant report failed');
+      }
     }
-  }, { timezone }));
+  }, { timezone: defaultTz }));
 
-  // ─── :05 Midnight — FINISH (hour=24) ───
-  jobs.push(cron.schedule(cronFinish, async () => {
-    const now = DateTime.now();
-    const yesterdayStr = now.yesterday().toDateStr();
-    const dayBeforeStr = now.minus(2).toDateStr();
+  // ─── 00:05 FINISH ───
+  jobs.push(cron.schedule('5 0 * * *', async () => {
+    const tenants = await getActiveTenants();
+    for (const tenant of tenants) {
+      try {
+        const now = DateTime.now();
+        const yesterdayStr = now.yesterday().toDateStr();
+        const dayBeforeStr = now.minus(2).toDateStr();
 
-    logger.info({ yesterday: yesterdayStr }, '00:05 FINISH starting');
-    try {
-      await fetchAllBrandsFinish(yesterdayStr);
-      await sendTimReports(0, yesterdayStr, dayBeforeStr);
-      logger.info('00:05 FINISH complete');
-    } catch (err) {
-      logger.error({ err }, '00:05 FINISH failed');
+        await fetchAllBrandsFinish(yesterdayStr, tenant.id);
+        await sendTimReports(0, yesterdayStr, dayBeforeStr, null, tenant.id);
+      } catch (err) {
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant FINISH failed');
+      }
     }
-  }, { timezone }));
+  }, { timezone: defaultTz }));
 
-  // ─── Keepalive: setiap 15 menit ───
+  // ─── Keepalive: every 15 min ───
   jobs.push(cron.schedule('*/15 * * * *', async () => {
-    const brands = (await getBrands()).filter(b => b.engine === 'asia77');
-    for (const brand of brands) {
-      const ok = await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader);
-      if (!ok) logger.warn({ brand: brand.key }, 'Keepalive failed');
+    const tenants = await getActiveTenants();
+    for (const tenant of tenants) {
+      const brands = (await getBrands(tenant.id)).filter(b => b.engine === 'asia77');
+      for (const brand of brands) {
+        await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader);
+      }
     }
-  }, { timezone }));
+  }, { timezone: defaultTz }));
 
-  // ─── Daily cleanup: hapus logs > 30 hari ───
+  // ─── Daily cleanup ───
   jobs.push(cron.schedule('0 3 * * *', async () => {
     const deleted = await cleanOldLogs(30);
     if (deleted > 0) logger.info({ deleted }, 'Old logs cleaned');
-  }, { timezone }));
+  }, { timezone: defaultTz }));
 
-  logger.info({ timezone, cronFetch, cronReport, cronFinish }, 'Scheduler started');
+  logger.info('Multi-tenant scheduler started');
 }
 
 export function stopScheduler() {
-  for (const job of jobs) {
-    job.stop();
-  }
+  for (const job of jobs) job.stop();
   jobs.length = 0;
-  logger.info('Scheduler stopped');
 }

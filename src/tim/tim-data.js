@@ -16,11 +16,11 @@ import { logger } from '../logger.js';
  * @param {number} currentHour - jam sekarang (1-23), atau 0 untuk FINISH
  * @returns {object} { rows, scoreboard, projection }
  */
-export async function getTimBrandData(brandKey, todayDate, yesterdayDate, currentHour) {
+export async function getTimBrandData(brandKey, todayDate, yesterdayDate, currentHour, tenantId = null) {
   try {
-    // Query PostgreSQL
-    const todayData = await getSnapshots(brandKey, todayDate);
-    const yesterdayData = await getSnapshots(brandKey, yesterdayDate);
+    // Query PostgreSQL (tenant-scoped)
+    const todayData = await getSnapshots(brandKey, todayDate, tenantId);
+    const yesterdayData = await getSnapshots(brandKey, yesterdayDate, tenantId);
 
     // Convert ke map: hour → {trx, regis}
     const todayMap = new Map(todayData.map(r => [r.hour, r]));

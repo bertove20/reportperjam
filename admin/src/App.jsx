@@ -32,6 +32,12 @@ const FinanceSettings = lazy(() => import('./pages/finance/Settings'))
 const AdminUsers = lazy(() => import('./pages/admin/Users'))
 const AdminDivisions = lazy(() => import('./pages/admin/Divisions'))
 
+// Platform (SaaS)
+const PlatformDashboard = lazy(() => import('./pages/platform/Dashboard'))
+const PlatformTenants = lazy(() => import('./pages/platform/Tenants'))
+const PlatformPlans = lazy(() => import('./pages/platform/Plans'))
+const Signup = lazy(() => import('./pages/Signup'))
+
 const Loader = () => <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading...</div>
 
 function ProtectedRoute({ children }) {
@@ -47,6 +53,7 @@ export default function App() {
       <Suspense fallback={<Loader />}>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             {/* Default: Report Dashboard */}
             <Route index element={<ReportDashboard />} />
@@ -82,6 +89,13 @@ export default function App() {
             <Route path="admin">
               <Route path="users" element={<AdminUsers />} />
               <Route path="divisions" element={<AdminDivisions />} />
+            </Route>
+
+            {/* Platform (SaaS admin) */}
+            <Route path="platform">
+              <Route index element={<PlatformDashboard />} />
+              <Route path="tenants" element={<PlatformTenants />} />
+              <Route path="plans" element={<PlatformPlans />} />
             </Route>
           </Route>
         </Routes>

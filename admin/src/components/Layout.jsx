@@ -47,6 +47,22 @@ const SIDEBAR_GROUPS = [
       { to: '/admin/divisions', label: 'Divisions', role: 'superadmin' },
     ],
   },
+  {
+    label: 'PLATFORM',
+    module: 'platform',
+    color: '#ef4444',
+    bgActive: 'bg-red-600/20',
+    textActive: 'text-red-400',
+    headerBg: 'bg-red-500/10',
+    borderColor: 'border-red-500/30',
+    defaultOpen: false,
+    platformOnly: true,
+    items: [
+      { to: '/platform', label: 'Dashboard', end: true },
+      { to: '/platform/tenants', label: 'Tenants' },
+      { to: '/platform/plans', label: 'Plans' },
+    ],
+  },
 ]
 
 export default function Layout() {
@@ -68,8 +84,8 @@ export default function Layout() {
   }
 
   const canSeeGroup = (group) => {
+    if (group.platformOnly) return !!user?.is_platform_admin
     if (user?.role === 'superadmin') return true
-    // Check if user has permission for this module
     const perms = user?.permissions || []
     return perms.some(p => p.module === group.module)
   }

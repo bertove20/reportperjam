@@ -19,14 +19,14 @@ const DELAY_BETWEEN_BRANDS = 3000;
 /**
  * Kirim Tim report untuk semua brand (atau satu brand spesifik)
  */
-export async function sendTimReports(currentHour, todayDate, yesterdayDate, brandKey = null) {
-  const groupId = await getSetting('tg_report_group', 'report') || process.env.TG_REPORT_GROUP;
+export async function sendTimReports(currentHour, todayDate, yesterdayDate, brandKey = null, tenantId = null) {
+  const groupId = await getSetting('tg_report_group', 'report', tenantId) || process.env.TG_REPORT_GROUP;
   if (!groupId) {
     logger.warn('TG_REPORT_GROUP not set — skipping Tim reports');
     return;
   }
 
-  const allBrands = await getBrands();
+  const allBrands = await getBrands(tenantId);
   const brands = brandKey ? allBrands.filter(b => b.key === brandKey) : allBrands;
   let successCount = 0;
 

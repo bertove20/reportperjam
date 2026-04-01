@@ -135,6 +135,29 @@ export const finance = {
   reports: (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/finance/reports?${qs}`) },
 };
 
+// Platform Admin (SaaS)
+export const platform = {
+  dashboard: () => request('/platform/dashboard'),
+  tenants: {
+    list: () => request('/platform/tenants'),
+    create: (data) => request('/platform/tenants', { method: 'POST', body: data }),
+    update: (id, data) => request(`/platform/tenants/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => request(`/platform/tenants/${id}`, { method: 'DELETE' }),
+    impersonate: (id) => request(`/platform/tenants/${id}/impersonate`, { method: 'POST' }),
+  },
+  plans: {
+    list: () => request('/platform/plans'),
+    create: (data) => request('/platform/plans', { method: 'POST', body: data }),
+    update: (id, data) => request(`/platform/plans/${id}`, { method: 'PUT', body: data }),
+  },
+};
+
+// Signup (public)
+export const signup = (data) => request('/signup', { method: 'POST', body: data });
+
+// Tenant info (public)
+export const tenantInfo = () => request('/tenant-info');
+
 // Users & Divisions (admin)
 export const admin = {
   users: {

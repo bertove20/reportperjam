@@ -18,6 +18,7 @@ import { existsSync } from 'fs';
 import { initDatabase } from './storage/postgres.js';
 import { initDefaultSettings } from './storage/settings-store.js';
 import { registerAuth } from './middleware/auth.js';
+import { registerTenantMiddleware } from './middleware/tenant.js';
 import { startScheduler } from './scheduler.js';
 import { logger } from './logger.js';
 
@@ -30,6 +31,8 @@ import monitoringRoutes from './routes/monitoring.js';
 import actionRoutes from './routes/actions.js';
 import userRoutes from './routes/users.js';
 import financeModule from './routes/finance/index.js';
+import platformRoutes from './routes/platform.js';
+import signupRoutes from './routes/signup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3000');
@@ -55,6 +58,9 @@ async function start() {
     secret: JWT_SECRET,
   });
 
+  // Tenant middleware (before auth)
+  registerTenantMiddleware(app);
+
   // Auth middleware
   registerAuth(app);
 
@@ -67,6 +73,8 @@ async function start() {
   await app.register(actionRoutes);
   await app.register(userRoutes);
   await app.register(financeModule);
+  await app.register(platformRoutes);
+  await app.register(signupRoutes);
 
   // Static frontend (admin/dist)
   const adminDistPath = join(__dirname, '..', 'admin', 'dist');

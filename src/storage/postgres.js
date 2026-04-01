@@ -1,10 +1,8 @@
 /**
- * PostgreSQL Storage — Unified Ecosystem Database
+ * PostgreSQL Storage — Multi-Tenant SaaS Ecosystem
  *
- * Modules:
- *   - Core: users, divisions, settings, permissions
- *   - Report Bot: report_brands, hourly_snapshots, job_logs
- *   - Finance: finance_brands, banks, payment_methods, transactions, etc.
+ * Tenant isolation via tenant_id column on all tables.
+ * Platform admin has tenant_id = NULL (operates across tenants).
  */
 
 import pg from 'pg';
@@ -14,7 +12,7 @@ const { Pool } = pg;
 let pool;
 
 export function getPool() {
-  if (!pool) throw new Error('Database not initialized. Call initDatabase() first.');
+  if (!pool) throw new Error('Database not initialized');
   return pool;
 }
 
@@ -46,6 +44,51 @@ export async function initDatabase() {
   }
 
   // ═══════════════════════════════════════
+  // SAAS — Plans, Tenants, Subscriptions
+  // ═══════════════════════════════════════
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS plans (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      max_brands INTEGER DEFAULT 5,
+      max_users INTEGER DEFAULT 10,
+      max_report_brands INTEGER DEFAULT 5,
+      features JSONB DEFAULT '{}',
+      price_monthly NUMERIC(10,2) DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      domain TEXT,
+      plan_id INTEGER REFERENCES plans(id) ON DELETE SET NULL,
+      is_active INTEGER DEFAULT 1,
+      logo_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug)`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      plan_id INTEGER REFERENCES plans(id),
+      status TEXT DEFAULT 'active' CHECK(status IN ('active','trial','suspended','cancelled')),
+      started_at TIMESTAMPTZ DEFAULT NOW(),
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // ═══════════════════════════════════════
   // CORE — Users, Divisions, Settings
   // ═══════════════════════════════════════
 
@@ -54,6 +97,7 @@ export async function initDatabase() {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       is_active INTEGER DEFAULT 1,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -63,11 +107,13 @@ export async function initDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
-      username TEXT NOT NULL UNIQUE,
+      username TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       full_name TEXT,
       role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('superadmin', 'leader', 'staff')),
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       division_id INTEGER REFERENCES divisions(id) ON DELETE SET NULL,
+      is_platform_admin INTEGER DEFAULT 0,
       is_active INTEGER DEFAULT 1,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -90,23 +136,25 @@ export async function initDatabase() {
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT NOT NULL,
       module TEXT NOT NULL DEFAULT 'global',
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       value TEXT NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT NOW(),
-      PRIMARY KEY(key, module)
+      PRIMARY KEY(key, module, tenant_id)
     )
   `);
 
   // ═══════════════════════════════════════
-  // REPORT BOT — Brands, Snapshots, Logs
+  // REPORT BOT
   // ═══════════════════════════════════════
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS report_brands (
       id SERIAL PRIMARY KEY,
-      key TEXT NOT NULL UNIQUE,
+      key TEXT NOT NULL,
       name TEXT NOT NULL,
       engine TEXT NOT NULL CHECK(engine IN ('asia77', 'syntech')),
       domain TEXT NOT NULL,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       is_active INTEGER DEFAULT 1,
       sort_order INTEGER DEFAULT 0,
       user_id INTEGER DEFAULT 0,
@@ -128,31 +176,31 @@ export async function initDatabase() {
       brand TEXT NOT NULL,
       date TEXT NOT NULL,
       hour INTEGER NOT NULL,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       deposit_accepted_count INTEGER,
       regis_total INTEGER,
       created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(brand, date, hour)
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_snapshots_brand_date ON hourly_snapshots(brand, date)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_snapshots_tenant_brand ON hourly_snapshots(tenant_id, brand, date)`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS job_logs (
       id SERIAL PRIMARY KEY,
       job_type TEXT NOT NULL,
       brand_key TEXT,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       status TEXT NOT NULL,
       message TEXT,
       duration_ms INTEGER,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_job_logs_created ON job_logs(created_at)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_job_logs_brand ON job_logs(brand_key, created_at)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_job_logs_tenant ON job_logs(tenant_id, created_at)`);
 
   // ═══════════════════════════════════════
-  // FINANCE — Brands, Banks, Transactions
+  // FINANCE
   // ═══════════════════════════════════════
 
   await pool.query(`
@@ -160,6 +208,7 @@ export async function initDatabase() {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       division_id INTEGER REFERENCES divisions(id) ON DELETE SET NULL,
       is_active INTEGER DEFAULT 1,
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -173,6 +222,7 @@ export async function initDatabase() {
       name TEXT NOT NULL,
       currency TEXT DEFAULT 'IDR',
       description TEXT,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       division_id INTEGER REFERENCES divisions(id) ON DELETE SET NULL,
       is_active INTEGER DEFAULT 1,
       created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -190,6 +240,7 @@ export async function initDatabase() {
       current_balance NUMERIC(15,2) DEFAULT 0,
       currency TEXT DEFAULT 'IDR',
       description TEXT,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       is_active INTEGER DEFAULT 1,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -201,6 +252,7 @@ export async function initDatabase() {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       division_id INTEGER REFERENCES divisions(id) ON DELETE SET NULL,
       is_active INTEGER DEFAULT 1,
       created_at TIMESTAMPTZ DEFAULT NOW()
@@ -213,9 +265,9 @@ export async function initDatabase() {
       name TEXT NOT NULL,
       description TEXT,
       team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       is_active INTEGER DEFAULT 1,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(name, team_id)
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
@@ -228,9 +280,9 @@ export async function initDatabase() {
       budget_amount NUMERIC(15,2) DEFAULT 0,
       budget_idr NUMERIC(15,2) DEFAULT 0,
       currency TEXT DEFAULT 'USD',
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(brand_id, month, year)
+      updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
@@ -246,13 +298,13 @@ export async function initDatabase() {
       currency TEXT DEFAULT 'USD',
       description TEXT,
       transaction_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_brand ON transactions(brand_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_transactions_tenant ON transactions(tenant_id, transaction_date)`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS balance_adjustments (
@@ -261,9 +313,12 @@ export async function initDatabase() {
       amount NUMERIC(15,2) NOT NULL,
       type TEXT NOT NULL CHECK(type IN ('topup', 'adjustment', 'transfer', 'loan_repayment')),
       description TEXT,
+      exchange_rate NUMERIC(15,2),
+      total_idr NUMERIC(15,2),
+      remaining_amount NUMERIC(15,2),
       adjustment_date DATE DEFAULT CURRENT_DATE,
       loan_id INTEGER,
-      remaining_amount NUMERIC(15,2),
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
@@ -275,6 +330,7 @@ export async function initDatabase() {
       transaction_id INTEGER REFERENCES transactions(id) ON DELETE CASCADE,
       adjustment_id INTEGER REFERENCES balance_adjustments(id) ON DELETE CASCADE,
       amount NUMERIC(15,2) NOT NULL,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
@@ -290,62 +346,98 @@ export async function initDatabase() {
       description TEXT,
       loan_date DATE DEFAULT CURRENT_DATE,
       status TEXT DEFAULT 'active' CHECK(status IN ('active', 'partial', 'repaid')),
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
-  // ─── Migrate: rename old tables if exist ───
-  await migrateOldTables();
+  // ─── Migration: add tenant_id to existing tables ───
+  await migrateToMultiTenant();
 
-  logger.info('PostgreSQL initialized (unified ecosystem)');
+  logger.info('PostgreSQL initialized (multi-tenant SaaS)');
 }
 
 /**
- * Migrate old table names to new names (backward compat)
+ * Migrate existing single-tenant data to multi-tenant
  */
-async function migrateOldTables() {
-  // Rename `brands` → `report_brands` if old table exists
-  const oldBrands = await queryOne("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'brands') as exists");
-  const newBrands = await queryOne("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'report_brands') as exists");
+async function migrateToMultiTenant() {
+  // Add columns if missing (for existing databases)
+  const alterations = [
+    'ALTER TABLE divisions ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_platform_admin INTEGER DEFAULT 0',
+    'ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE hourly_snapshots ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE job_logs ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE finance_brands ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE banks ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE teams ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE brand_budgets ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE balance_adjustments ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE balance_adjustments ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC(15,2)',
+    'ALTER TABLE balance_adjustments ADD COLUMN IF NOT EXISTS total_idr NUMERIC(15,2)',
+    'ALTER TABLE balance_adjustments ADD COLUMN IF NOT EXISTS remaining_amount NUMERIC(15,2)',
+    'ALTER TABLE fifo_allocations ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE loans ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE settings ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+  ];
 
-  if (oldBrands?.exists && !newBrands?.exists) {
-    await query('ALTER TABLE brands RENAME TO report_brands');
-    logger.info('Migrated: brands → report_brands');
+  for (const sql of alterations) {
+    await query(sql).catch(() => {});
   }
 
-  // Rename `admin_users` → `users` if old table exists
-  const oldUsers = await queryOne("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'admin_users') as exists");
-  const newUsers = await queryOne("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users') as exists");
+  // Drop old unique constraints that don't include tenant_id
+  await query('ALTER TABLE users DROP CONSTRAINT IF EXISTS admin_users_username_key').catch(() => {});
+  await query('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key').catch(() => {});
+  await query('ALTER TABLE report_brands DROP CONSTRAINT IF EXISTS report_brands_key_key').catch(() => {});
+  await query('ALTER TABLE report_brands DROP CONSTRAINT IF EXISTS brands_key_key').catch(() => {});
+  await query('ALTER TABLE hourly_snapshots DROP CONSTRAINT IF EXISTS hourly_snapshots_brand_date_hour_key').catch(() => {});
 
-  if (oldUsers?.exists && !newUsers?.exists) {
-    await query('ALTER TABLE admin_users RENAME TO users');
-    // Add new columns
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT");
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'superadmin'");
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS division_id INTEGER");
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1");
-    logger.info('Migrated: admin_users → users with role columns');
-  } else if (newUsers?.exists) {
-    // Ensure columns exist on existing users table
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT").catch(() => {});
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'superadmin'").catch(() => {});
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS division_id INTEGER").catch(() => {});
-    await query("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active INTEGER DEFAULT 1").catch(() => {});
+  // Create new unique constraints with tenant_id
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_users_tenant_username ON users(tenant_id, username)').catch(() => {});
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_report_brands_tenant_key ON report_brands(tenant_id, key)').catch(() => {});
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_snapshots_tenant ON hourly_snapshots(tenant_id, brand, date, hour)').catch(() => {});
+
+  // Create default plan if not exists
+  await query(`INSERT INTO plans (name, max_brands, max_users, max_report_brands, price_monthly)
+    VALUES ('Free', 5, 5, 3, 0) ON CONFLICT(name) DO NOTHING`);
+  await query(`INSERT INTO plans (name, max_brands, max_users, max_report_brands, price_monthly)
+    VALUES ('Starter', 20, 15, 10, 0) ON CONFLICT(name) DO NOTHING`);
+  await query(`INSERT INTO plans (name, max_brands, max_users, max_report_brands, price_monthly)
+    VALUES ('Business', 100, 50, 50, 0) ON CONFLICT(name) DO NOTHING`);
+  await query(`INSERT INTO plans (name, max_brands, max_users, max_report_brands, price_monthly)
+    VALUES ('Enterprise', 9999, 9999, 9999, 0) ON CONFLICT(name) DO NOTHING`);
+
+  // Create default tenant for existing data
+  const defaultTenant = await queryOne("SELECT id FROM tenants WHERE slug = 'default'");
+  if (!defaultTenant) {
+    const plan = await queryOne("SELECT id FROM plans WHERE name = 'Enterprise'");
+    await query(
+      "INSERT INTO tenants (name, slug, plan_id) VALUES ('Default', 'default', $1)",
+      [plan?.id || 1]
+    );
+    logger.info('Created default tenant');
+
+    // Assign all existing data to default tenant
+    const tenant = await queryOne("SELECT id FROM tenants WHERE slug = 'default'");
+    if (tenant) {
+      const tables = ['divisions', 'users', 'report_brands', 'hourly_snapshots', 'job_logs',
+        'finance_brands', 'banks', 'payment_methods', 'teams', 'expense_categories',
+        'brand_budgets', 'transactions', 'balance_adjustments', 'fifo_allocations', 'loans'];
+      for (const t of tables) {
+        await query(`UPDATE ${t} SET tenant_id = $1 WHERE tenant_id IS NULL`, [tenant.id]).catch(() => {});
+      }
+
+      // Make existing admin a platform admin
+      await query("UPDATE users SET is_platform_admin = 1, tenant_id = $1 WHERE role = 'superadmin' AND tenant_id IS NULL", [tenant.id]).catch(() => {});
+      logger.info(`Migrated existing data to tenant ${tenant.id}`);
+    }
   }
-
-  // Migrate settings table: add module column if not exists
-  await query("ALTER TABLE settings DROP CONSTRAINT IF EXISTS settings_pkey").catch(() => {});
-  await query("ALTER TABLE settings ADD COLUMN IF NOT EXISTS module TEXT DEFAULT 'global'").catch(() => {});
-  // Re-add primary key with module
-  const hasPK = await queryOne("SELECT 1 FROM information_schema.table_constraints WHERE table_name = 'settings' AND constraint_type = 'PRIMARY KEY'");
-  if (!hasPK) {
-    await query("ALTER TABLE settings ADD PRIMARY KEY (key, module)").catch(() => {});
-  }
-
-  // Add division_id to report_brands if not exists
-  await query("ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS division_id INTEGER").catch(() => {});
 }
 
 // ═══════════════════════════════════════════════
@@ -354,10 +446,10 @@ async function migrateOldTables() {
 
 const FRESH_THRESHOLD_MS = 55 * 60 * 1000;
 
-export async function upsertSnapshot(brand, date, hour, trx, regis) {
+export async function upsertSnapshot(brand, date, hour, trx, regis, tenantId = null) {
   const existing = await queryOne(
-    'SELECT updated_at FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3',
-    [brand, date, hour]
+    'SELECT updated_at FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND (tenant_id = $4 OR ($4 IS NULL AND tenant_id IS NULL))',
+    [brand, date, hour, tenantId]
   );
 
   if (existing) {
@@ -366,45 +458,45 @@ export async function upsertSnapshot(brand, date, hour, trx, regis) {
   }
 
   await query(`
-    INSERT INTO hourly_snapshots (brand, date, hour, deposit_accepted_count, regis_total, updated_at)
-    VALUES ($1, $2, $3, $4, $5, NOW())
-    ON CONFLICT(brand, date, hour)
+    INSERT INTO hourly_snapshots (brand, date, hour, deposit_accepted_count, regis_total, tenant_id, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    ON CONFLICT ON CONSTRAINT uq_snapshots_tenant
     DO UPDATE SET
       deposit_accepted_count = EXCLUDED.deposit_accepted_count,
       regis_total = EXCLUDED.regis_total,
       updated_at = NOW()
-  `, [brand, date, hour, trx, regis]);
+  `, [brand, date, hour, trx, regis, tenantId]);
 }
 
-export async function upsertSnapshotNullable(brand, date, hour, trx, regis) {
+export async function upsertSnapshotNullable(brand, date, hour, trx, regis, tenantId = null) {
   const existing = await queryOne(
-    'SELECT deposit_accepted_count FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3',
-    [brand, date, hour]
+    'SELECT deposit_accepted_count FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND (tenant_id = $4 OR ($4 IS NULL AND tenant_id IS NULL))',
+    [brand, date, hour, tenantId]
   );
 
   const finalTrx = trx !== null && trx !== undefined ? trx : (existing?.deposit_accepted_count ?? null);
 
   await query(`
-    INSERT INTO hourly_snapshots (brand, date, hour, deposit_accepted_count, regis_total, updated_at)
-    VALUES ($1, $2, $3, $4, $5, NOW())
-    ON CONFLICT(brand, date, hour)
+    INSERT INTO hourly_snapshots (brand, date, hour, deposit_accepted_count, regis_total, tenant_id, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    ON CONFLICT ON CONSTRAINT uq_snapshots_tenant
     DO UPDATE SET
       deposit_accepted_count = EXCLUDED.deposit_accepted_count,
       regis_total = EXCLUDED.regis_total,
       updated_at = NOW()
-  `, [brand, date, hour, finalTrx, regis]);
+  `, [brand, date, hour, finalTrx, regis, tenantId]);
 }
 
-export async function getSnapshots(brand, date) {
+export async function getSnapshots(brand, date, tenantId = null) {
   return queryRows(
-    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 ORDER BY hour ASC',
-    [brand, date]
+    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND (tenant_id = $3 OR ($3 IS NULL AND tenant_id IS NULL)) ORDER BY hour ASC',
+    [brand, date, tenantId]
   );
 }
 
-export async function getSnapshot(brand, date, hour) {
+export async function getSnapshot(brand, date, hour, tenantId = null) {
   return queryOne(
-    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3',
-    [brand, date, hour]
+    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND (tenant_id = $4 OR ($4 IS NULL AND tenant_id IS NULL))',
+    [brand, date, hour, tenantId]
   );
 }

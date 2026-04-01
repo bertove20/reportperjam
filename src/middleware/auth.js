@@ -24,8 +24,10 @@ export function registerAuth(app) {
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0];
 
-    // Skip auth
+    // Skip auth for public routes
     if (path === '/api/auth/login') return;
+    if (path === '/api/signup') return;
+    if (path === '/api/tenant-info') return;
     if (!path.startsWith('/api/')) return;
 
     await authHook(request, reply);

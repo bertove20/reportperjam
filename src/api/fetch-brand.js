@@ -29,9 +29,9 @@ async function withRetry(fn, label, retries = 3) {
 /**
  * Fetch semua brand untuk jam biasa (hours 1-23)
  */
-export async function fetchAllBrands(dateStr, hour) {
+export async function fetchAllBrands(dateStr, hour, tenantId = null) {
   const dt = new DateTime();
-  const brands = await getBrands();
+  const brands = await getBrands(tenantId);
   const errors = [];
 
   for (const brand of brands) {
@@ -71,7 +71,7 @@ export async function fetchAllBrands(dateStr, hour) {
         );
       }
 
-      await upsertSnapshot(brand.key, dateStr, hour, trx, regis);
+      await upsertSnapshot(brand.key, dateStr, hour, trx, regis, tenantId);
       const duration = Date.now() - start;
       logger.info({ brand: brand.key, hour, trx, regis }, 'Data stored');
       insertLog('fetch', brand.key, 'success', `trx=${trx} regis=${regis}`, duration);
@@ -93,8 +93,8 @@ export async function fetchAllBrands(dateStr, hour) {
 /**
  * Fetch FINISH (hour=24) untuk semua brand
  */
-export async function fetchAllBrandsFinish(yesterdayDateStr) {
-  const brands = await getBrands();
+export async function fetchAllBrandsFinish(yesterdayDateStr, tenantId = null) {
+  const brands = await getBrands(tenantId);
 
   for (const brand of brands) {
     const start = Date.now();
@@ -135,7 +135,7 @@ export async function fetchAllBrandsFinish(yesterdayDateStr) {
         );
       }
 
-      await upsertSnapshot(brand.key, yesterdayDateStr, 24, trx, regis);
+      await upsertSnapshot(brand.key, yesterdayDateStr, 24, trx, regis, tenantId);
       const duration = Date.now() - start;
       logger.info({ brand: brand.key, trx, regis }, 'FINISH stored');
       insertLog('finish', brand.key, 'success', `trx=${trx} regis=${regis}`, duration);
