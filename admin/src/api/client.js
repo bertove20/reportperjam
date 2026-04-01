@@ -68,11 +68,87 @@ export const reports = {
   summary: (brand, date) => request(`/reports/summary?brand=${brand}&date=${date}`),
 };
 
-// Settings
+// Settings (module-scoped)
 export const settings = {
-  get: () => request('/settings'),
+  get: (module = 'report') => request(`/settings?module=${module}`),
   update: (data) => request('/settings', { method: 'PUT', body: data }),
-  testTelegram: () => request('/settings/test-telegram', { method: 'POST' }),
+  testTelegram: (module = 'report') => request(`/settings/test-telegram?module=${module}`, { method: 'POST' }),
+};
+
+// Finance
+export const finance = {
+  dashboard: (month, year) => request(`/finance/dashboard?month=${month}&year=${year}`),
+  transactions: {
+    list: (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/finance/transactions?${qs}`) },
+    get: (id) => request(`/finance/transactions/${id}`),
+    create: (data) => request('/finance/transactions', { method: 'POST', body: data }),
+    update: (id, data) => request(`/finance/transactions/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => request(`/finance/transactions/${id}`, { method: 'DELETE' }),
+    formData: () => request('/finance/transactions/form-data'),
+  },
+  brands: {
+    list: () => request('/finance/brands'),
+    get: (id) => request(`/finance/brands/${id}`),
+    create: (data) => request('/finance/brands', { method: 'POST', body: data }),
+    update: (id, data) => request(`/finance/brands/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => request(`/finance/brands/${id}`, { method: 'DELETE' }),
+    budget: (id) => request(`/finance/brands/${id}/budget`),
+    setBudget: (id, data) => request(`/finance/brands/${id}/budget`, { method: 'POST', body: data }),
+  },
+  banks: {
+    list: () => request('/finance/banks'),
+    create: (data) => request('/finance/banks', { method: 'POST', body: data }),
+    update: (id, data) => request(`/finance/banks/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => request(`/finance/banks/${id}`, { method: 'DELETE' }),
+    wallets: (id) => request(`/finance/banks/${id}/wallets`),
+  },
+  paymentMethods: {
+    list: () => request('/finance/payment-methods'),
+    create: (data) => request('/finance/payment-methods', { method: 'POST', body: data }),
+    update: (id, data) => request(`/finance/payment-methods/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => request(`/finance/payment-methods/${id}`, { method: 'DELETE' }),
+  },
+  balance: {
+    list: () => request('/finance/balance'),
+    topup: (data) => request('/finance/balance/topup', { method: 'POST', body: data }),
+    transfer: (data) => request('/finance/balance/transfer', { method: 'POST', body: data }),
+    history: (id) => request(`/finance/balance/history/${id}`),
+  },
+  categories: {
+    list: () => request('/finance/categories'),
+    create: (data) => request('/finance/categories', { method: 'POST', body: data }),
+    delete: (id) => request(`/finance/categories/${id}`, { method: 'DELETE' }),
+    byTeam: (teamId) => request(`/finance/categories/by-team/${teamId}`),
+  },
+  teams: {
+    list: () => request('/finance/teams'),
+    create: (data) => request('/finance/teams', { method: 'POST', body: data }),
+    delete: (id) => request(`/finance/teams/${id}`, { method: 'DELETE' }),
+  },
+  loans: {
+    list: () => request('/finance/loans'),
+    get: (id) => request(`/finance/loans/${id}`),
+    create: (data) => request('/finance/loans', { method: 'POST', body: data }),
+    repay: (id, data) => request(`/finance/loans/${id}/repay`, { method: 'POST', body: data }),
+    delete: (id) => request(`/finance/loans/${id}`, { method: 'DELETE' }),
+  },
+  reports: (params = {}) => { const qs = new URLSearchParams(params).toString(); return request(`/finance/reports?${qs}`) },
+};
+
+// Users & Divisions (admin)
+export const admin = {
+  users: {
+    list: () => request('/users'),
+    create: (data) => request('/users', { method: 'POST', body: data }),
+    update: (id, data) => request(`/users/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => request(`/users/${id}`, { method: 'DELETE' }),
+  },
+  divisions: {
+    list: () => request('/divisions'),
+    create: (data) => request('/divisions', { method: 'POST', body: data }),
+    update: (id, data) => request(`/divisions/${id}`, { method: 'PUT', body: data }),
+    delete: (id) => request(`/divisions/${id}`, { method: 'DELETE' }),
+  },
 };
 
 // Monitoring
