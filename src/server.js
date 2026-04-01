@@ -1,16 +1,12 @@
 /**
- * Server Entry Point — Fastify + Cron Scheduler
- *
- * Menjalankan:
- *   1. SQLite init (semua tabel)
- *   2. Fastify HTTP server (API + static frontend)
- *   3. Cron scheduler (fetch + report)
+ * Server Entry Point — Multi-Tenant SaaS Ecosystem
  */
 
 import Fastify from 'fastify';
 import fastifyJwt from '@fastify/jwt';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
@@ -45,17 +41,32 @@ async function start() {
   logger.info('Database ready');
 
   // 2. Fastify
-  const app = Fastify({
-    logger: false, // kita pakai pino sendiri
+  const app = Fastify({ logger: false });
+
+  // Rate limiting
+  await app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    keyGenerator: (request) => request.ip,
   });
 
-  // Plugins
-  await app.register(fastifyCors, {
-    origin: true, // Allow all origins in dev
-  });
+  // CORS
+  await app.register(fastifyCors, { origin: true });
 
-  await app.register(fastifyJwt, {
-    secret: JWT_SECRET,
+  // JWT
+  await app.register(fastifyJwt, { secret: JWT_SECRET });
+
+  // Global error handler
+  app.setErrorHandler((error, request, reply) => {
+    logger.error({ err: error.message, url: request.url }, 'Request error');
+
+    if (error.statusCode === 429) {
+      return reply.code(429).send({ error: 'Too many requests. Try again later.' });
+    }
+
+    reply.code(error.statusCode || 500).send({
+      error: error.message || 'Internal server error',
+    });
   });
 
   // Tenant middleware (before auth)
@@ -63,6 +74,9 @@ async function start() {
 
   // Auth middleware
   registerAuth(app);
+
+  // Stricter rate limit on login/signup
+  const loginRateLimit = { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } };
 
   // API Routes
   await app.register(authRoutes);
@@ -76,17 +90,17 @@ async function start() {
   await app.register(platformRoutes);
   await app.register(signupRoutes);
 
-  // Static frontend (admin/dist)
+  // Static frontend
   const adminDistPath = join(__dirname, '..', 'admin', 'dist');
   if (existsSync(adminDistPath)) {
     await app.register(fastifyStatic, {
       root: adminDistPath,
       prefix: '/',
-      wildcard: false, // Don't catch all routes
+      wildcard: false,
     });
   }
 
-  // SPA fallback: non-API, non-static routes → index.html
+  // SPA fallback
   app.setNotFoundHandler((request, reply) => {
     if (request.url.startsWith('/api/')) {
       return reply.code(404).send({ error: 'API route not found' });
@@ -94,16 +108,16 @@ async function start() {
     if (existsSync(adminDistPath)) {
       return reply.sendFile('index.html');
     }
-    return reply.code(404).send({ error: 'Frontend not built yet. Run: cd admin && npm run build' });
+    return reply.code(404).send({ error: 'Frontend not built' });
   });
 
-  // Start server
+  // Start
   await app.listen({ port: PORT, host: '0.0.0.0' });
-  logger.info({ port: PORT }, `Fastify server running on http://localhost:${PORT}`);
+  logger.info({ port: PORT }, `Server running on http://localhost:${PORT}`);
 
   // 3. Scheduler
   await startScheduler();
-  logger.info('Tim Report Bot SaaS ready');
+  logger.info('Ecosystem SaaS ready');
 }
 
 start().catch(err => {

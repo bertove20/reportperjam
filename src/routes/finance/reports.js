@@ -3,14 +3,16 @@
  */
 
 import { queryRows, queryOne } from '../../storage/postgres.js';
+import { tWhere } from '../../middleware/tenant-scope.js';
 
 export default async function (app) {
   app.get('/api/finance/reports', async (request) => {
+    const tid = request.tenantId;
     const { month, year, brand_id, start_date, end_date } = request.query;
 
     let dateFilter = '';
-    const params = [];
-    let idx = 1;
+    const params = [tid];
+    let idx = 2;
 
     if (start_date && end_date) {
       dateFilter = `AND t.transaction_date BETWEEN $${idx++} AND $${idx++}`;
@@ -26,7 +28,7 @@ export default async function (app) {
       params.push(parseInt(brand_id));
     }
 
-    const where = `WHERE 1=1 ${dateFilter} ${brandFilter}`;
+    const where = `WHERE t.tenant_id = $1 ${dateFilter} ${brandFilter}`;
 
     // By brand
     const byBrand = await queryRows(`

@@ -353,6 +353,36 @@ export async function initDatabase() {
     )
   `);
 
+  // ─── Audit Log ───
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER,
+      user_id INTEGER,
+      username TEXT,
+      action TEXT NOT NULL,
+      module TEXT,
+      target_type TEXT,
+      target_id TEXT,
+      details JSONB,
+      ip_address TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit_logs(tenant_id, created_at)`);
+
+  // ─── Password Reset Tokens ───
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
   // ─── Migration: add tenant_id to existing tables ───
   await migrateToMultiTenant();
 

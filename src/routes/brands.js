@@ -7,17 +7,20 @@ import { fetchAsia77Daily, fetchAsia77Regis } from '../api/asia77-engine.js';
 import { encrypt } from '../utils/crypto.js';
 import { DateTime } from '../utils/datetime.js';
 import { logger } from '../logger.js';
+import { tWhere } from '../middleware/tenant-scope.js';
 
 export default async function brandRoutes(app) {
   // GET /api/brands — list all
   app.get('/api/brands', async (request) => {
+    const tid = request.tenantId;
     const activeOnly = request.query.active !== 'false';
-    return getAllBrands(activeOnly);
+    return getAllBrands(activeOnly, tid);
   });
 
   // GET /api/brands/:key
   app.get('/api/brands/:key', async (request, reply) => {
-    const brand = getBrandByKey(request.params.key);
+    const tid = request.tenantId;
+    const brand = await getBrandByKey(request.params.key, tid);
     if (!brand) return reply.code(404).send({ error: 'Brand not found' });
 
     // Mask sensitive fields
@@ -28,12 +31,13 @@ export default async function brandRoutes(app) {
 
   // POST /api/brands — create
   app.post('/api/brands', async (request, reply) => {
+    const tid = request.tenantId;
     const data = request.body;
     if (!data.key || !data.name || !data.engine || !data.domain) {
       return reply.code(400).send({ error: 'key, name, engine, domain required' });
     }
 
-    const existing = getBrandByKey(data.key);
+    const existing = await getBrandByKey(data.key, tid);
     if (existing) {
       return reply.code(409).send({ error: `Brand ${data.key} already exists` });
     }
@@ -42,14 +46,16 @@ export default async function brandRoutes(app) {
     if (data.auth_pass) data.auth_pass = encrypt(data.auth_pass);
     if (data.auth_pin) data.auth_pin = encrypt(data.auth_pin);
 
-    const brand = createBrand(data);
+    data.tenant_id = tid;
+    const brand = await createBrand(data);
     logger.info({ key: brand.key }, 'Brand created via API');
     return reply.code(201).send(brand);
   });
 
   // PUT /api/brands/:key — update
   app.put('/api/brands/:key', async (request, reply) => {
-    const brand = getBrandByKey(request.params.key);
+    const tid = request.tenantId;
+    const brand = await getBrandByKey(request.params.key, tid);
     if (!brand) return reply.code(404).send({ error: 'Brand not found' });
 
     const data = { ...request.body };
@@ -66,21 +72,22 @@ export default async function brandRoutes(app) {
       delete data.auth_pin;
     }
 
-    const updated = updateBrand(request.params.key, data);
+    const updated = await updateBrand(request.params.key, data, tid);
     logger.info({ key: updated.key }, 'Brand updated via API');
     return updated;
   });
 
   // DELETE /api/brands/:key
   app.delete('/api/brands/:key', async (request, reply) => {
-    const brand = getBrandByKey(request.params.key);
+    const tid = request.tenantId;
+    const brand = await getBrandByKey(request.params.key, tid);
     if (!brand) return reply.code(404).send({ error: 'Brand not found' });
 
     const hard = request.query.hard === 'true';
     if (hard) {
-      hardDeleteBrand(request.params.key);
+      await hardDeleteBrand(request.params.key, tid);
     } else {
-      deleteBrand(request.params.key);
+      await deleteBrand(request.params.key, tid);
     }
 
     logger.info({ key: request.params.key, hard }, 'Brand deleted via API');
@@ -89,19 +96,21 @@ export default async function brandRoutes(app) {
 
   // PATCH /api/brands/:key/cookie — update cookie only
   app.patch('/api/brands/:key/cookie', async (request, reply) => {
-    const brand = getBrandByKey(request.params.key);
+    const tid = request.tenantId;
+    const brand = await getBrandByKey(request.params.key, tid);
     if (!brand) return reply.code(404).send({ error: 'Brand not found' });
 
     const { cookieHeader } = request.body || {};
     if (!cookieHeader) return reply.code(400).send({ error: 'cookieHeader required' });
 
-    updateBrandCookie(request.params.key, cookieHeader);
+    await updateBrandCookie(request.params.key, cookieHeader, tid);
     return { success: true };
   });
 
   // POST /api/brands/:key/login — buka browser untuk login, return cookie
   app.post('/api/brands/:key/login', async (request, reply) => {
-    const brand = getBrandByKey(request.params.key);
+    const tid = request.tenantId;
+    const brand = await getBrandByKey(request.params.key, tid);
     if (!brand) return reply.code(404).send({ error: 'Brand not found' });
 
     try {
@@ -151,7 +160,7 @@ export default async function brandRoutes(app) {
       await browser.close();
 
       if (cookieHeader) {
-        updateBrandCookie(brand.key, cookieHeader);
+        await updateBrandCookie(brand.key, cookieHeader, tid);
         return { success: true, message: `Cookie captured and saved for ${brand.name}` };
       } else {
         return reply.code(408).send({ success: false, error: 'Login timeout — no SESSION cookie detected in 5 minutes' });
@@ -163,7 +172,8 @@ export default async function brandRoutes(app) {
 
   // POST /api/brands/:key/test — test fetch
   app.post('/api/brands/:key/test', async (request, reply) => {
-    const brand = getBrandByKey(request.params.key);
+    const tid = request.tenantId;
+    const brand = await getBrandByKey(request.params.key, tid);
     if (!brand) return reply.code(404).send({ error: 'Brand not found' });
 
     try {

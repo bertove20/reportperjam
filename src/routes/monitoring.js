@@ -4,6 +4,7 @@
 
 import { queryLogs, getLogStats, getLatestLog } from '../storage/log-store.js';
 import { getAllBrands } from '../storage/brand-store.js';
+import { queryAuditLogs } from '../storage/audit-store.js';
 
 const startTime = Date.now();
 
@@ -29,6 +30,19 @@ export default async function monitoringRoutes(app) {
       brands: brandStatus,
       stats,
     };
+  });
+
+  // GET /api/audit-logs
+  app.get('/api/audit-logs', async (request) => {
+    const tid = request.tenantId;
+    const { module, action, limit, offset } = request.query;
+    const logs = await queryAuditLogs({
+      tenantId: tid,
+      module, action,
+      limit: parseInt(limit) || 50,
+      offset: parseInt(offset) || 0,
+    });
+    return logs;
   });
 
   app.get('/api/logs', async (request) => {

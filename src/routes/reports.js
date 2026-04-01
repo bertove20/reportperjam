@@ -4,10 +4,12 @@
 
 import { getTimBrandData } from '../tim/tim-data.js';
 import { queryRows, queryOne } from '../storage/postgres.js';
+import { tWhere } from '../middleware/tenant-scope.js';
 
 export default async function reportRoutes(app) {
   // GET /api/reports/hourly
   app.get('/api/reports/hourly', async (request, reply) => {
+    const tid = request.tenantId;
     const { brand, date } = request.query;
     if (!brand || !date) return reply.code(400).send({ error: 'brand and date required' });
 
@@ -24,7 +26,7 @@ export default async function reportRoutes(app) {
       currentHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Asia/Phnom_Penh', hour: 'numeric', hour12: false }));
     } else {
       const hasFinish = await queryOne(
-        'SELECT 1 FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = 24', [brand, date]
+        'SELECT 1 FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = 24 AND tenant_id = $3', [brand, date, tid]
       );
       currentHour = hasFinish ? 0 : 23;
     }
@@ -35,26 +37,28 @@ export default async function reportRoutes(app) {
 
   // GET /api/reports/daily-summary
   app.get('/api/reports/daily-summary', async (request, reply) => {
+    const tid = request.tenantId;
     const { brand, from, to } = request.query;
     if (!brand || !from || !to) return reply.code(400).send({ error: 'brand, from, to required' });
 
     const rows = await queryRows(
-      'SELECT date, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24 ORDER BY date ASC',
-      [brand, from, to]
+      'SELECT date, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24 AND tenant_id = $4 ORDER BY date ASC',
+      [brand, from, to, tid]
     );
     return { brand, from, to, data: rows };
   });
 
   // GET /api/reports/comparison
   app.get('/api/reports/comparison', async (request, reply) => {
+    const tid = request.tenantId;
     const { date } = request.query;
     if (!date) return reply.code(400).send({ error: 'date required' });
 
     const rows = await queryRows(
       `SELECT brand, MAX(hour) as lasthour, MAX(deposit_accepted_count) as trx, MAX(regis_total) as regis
-       FROM hourly_snapshots WHERE date = $1 AND hour <= 23
+       FROM hourly_snapshots WHERE date = $1 AND hour <= 23 AND tenant_id = $2
        GROUP BY brand ORDER BY MAX(deposit_accepted_count) DESC`,
-      [date]
+      [date, tid]
     );
 
     const d = new Date(date + 'T12:00:00');
@@ -62,8 +66,8 @@ export default async function reportRoutes(app) {
     const yesterdayDate = d.toISOString().split('T')[0];
 
     const yesterdayRows = await queryRows(
-      'SELECT brand, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE date = $1 AND hour = 24',
-      [yesterdayDate]
+      'SELECT brand, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE date = $1 AND hour = 24 AND tenant_id = $2',
+      [yesterdayDate, tid]
     );
     const yesterdayMap = new Map(yesterdayRows.map(r => [r.brand, r]));
 
@@ -79,17 +83,18 @@ export default async function reportRoutes(app) {
 
   // GET /api/reports/chart-data
   app.get('/api/reports/chart-data', async (request, reply) => {
+    const tid = request.tenantId;
     const { brand, from, to } = request.query;
     if (!brand || !from || !to) return reply.code(400).send({ error: 'brand, from, to required' });
 
     const finishRows = await queryRows(
-      'SELECT date, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24 ORDER BY date ASC',
-      [brand, from, to]
+      'SELECT date, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24 AND tenant_id = $4 ORDER BY date ASC',
+      [brand, from, to, tid]
     );
 
     const hourlyRows = await queryRows(
-      'SELECT hour, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour <= 23 ORDER BY hour ASC',
-      [brand, to]
+      'SELECT hour, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour <= 23 AND tenant_id = $3 ORDER BY hour ASC',
+      [brand, to, tid]
     );
 
     return { brand, from, to, dailyTrend: finishRows, hourlyBreakdown: hourlyRows };
@@ -97,14 +102,15 @@ export default async function reportRoutes(app) {
 
   // GET /api/reports/summary
   app.get('/api/reports/summary', async (request, reply) => {
+    const tid = request.tenantId;
     const { brand, date } = request.query;
     if (!brand || !date) return reply.code(400).send({ error: 'brand and date required' });
 
     const getFinish = (d) => queryOne(
-      'SELECT deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = 24', [brand, d]
+      'SELECT deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = 24 AND tenant_id = $3', [brand, d, tid]
     );
     const getLatest = (d) => queryOne(
-      'SELECT MAX(hour) as hour, MAX(deposit_accepted_count) as trx, MAX(regis_total) as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour <= 23', [brand, d]
+      'SELECT MAX(hour) as hour, MAX(deposit_accepted_count) as trx, MAX(regis_total) as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour <= 23 AND tenant_id = $3', [brand, d, tid]
     );
 
     const todayData = await getLatest(date);
@@ -120,8 +126,8 @@ export default async function reportRoutes(app) {
       getFinish(yesterdayStr),
       getFinish(weekAgoStr),
       getFinish(monthAgoStr),
-      queryOne('SELECT ROUND(AVG(deposit_accepted_count)) as avgtrx, ROUND(AVG(regis_total)) as avgregis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24', [brand, weekAgoStr, yesterdayStr]),
-      queryOne('SELECT ROUND(AVG(deposit_accepted_count)) as avgtrx, ROUND(AVG(regis_total)) as avgregis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24', [brand, monthAgoStr, yesterdayStr]),
+      queryOne('SELECT ROUND(AVG(deposit_accepted_count)) as avgtrx, ROUND(AVG(regis_total)) as avgregis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24 AND tenant_id = $4', [brand, weekAgoStr, yesterdayStr, tid]),
+      queryOne('SELECT ROUND(AVG(deposit_accepted_count)) as avgtrx, ROUND(AVG(regis_total)) as avgregis FROM hourly_snapshots WHERE brand = $1 AND date BETWEEN $2 AND $3 AND hour = 24 AND tenant_id = $4', [brand, monthAgoStr, yesterdayStr, tid]),
     ]);
 
     return {
@@ -137,11 +143,12 @@ export default async function reportRoutes(app) {
 
   // GET /api/reports/dates
   app.get('/api/reports/dates', async (request, reply) => {
+    const tid = request.tenantId;
     const { brand } = request.query;
     if (!brand) return reply.code(400).send({ error: 'brand required' });
 
     const rows = await queryRows(
-      'SELECT DISTINCT date FROM hourly_snapshots WHERE brand = $1 ORDER BY date DESC LIMIT 90', [brand]
+      'SELECT DISTINCT date FROM hourly_snapshots WHERE brand = $1 AND tenant_id = $2 ORDER BY date DESC LIMIT 90', [brand, tid]
     );
     return rows.map(r => r.date);
   });

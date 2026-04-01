@@ -2,10 +2,12 @@
  * Auth Routes — Multi-tenant login, me, change password
  */
 
+import { randomBytes } from 'crypto';
 import { queryOne, query } from '../storage/postgres.js';
 import { hashPassword, verifyPassword } from '../utils/auth-utils.js';
 import { getUserPermissions } from '../middleware/auth.js';
 import { getTenantBySlug } from '../middleware/tenant.js';
+import { auditLog, auditCtx } from '../storage/audit-store.js';
 
 export default async function authRoutes(app) {
   // Login — scoped by tenant
@@ -88,6 +90,43 @@ export default async function authRoutes(app) {
 
     const hash = await hashPassword(newPassword);
     await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, user.id]);
+    await auditLog(auditCtx(request), 'change_password', 'auth', 'user', user.id);
     return { success: true };
+  });
+
+  // Request password reset token (by username)
+  app.post('/api/auth/forgot-password', async (request, reply) => {
+    const { username } = request.body || {};
+    if (!username) return reply.code(400).send({ error: 'Username required' });
+
+    const tenantId = request.tenantId;
+    const user = await queryOne('SELECT id FROM users WHERE username = $1 AND tenant_id = $2', [username, tenantId]);
+    if (!user) return { success: true, message: 'If username exists, reset token generated' }; // Don't leak user existence
+
+    const token = randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await query('INSERT INTO password_resets (user_id, token, expires_at) VALUES ($1, $2, $3)', [user.id, token, expires]);
+
+    // In production, send token via email/Telegram. For now return it.
+    return { success: true, token, message: 'Give this token to the user to reset password' };
+  });
+
+  // Reset password with token
+  app.post('/api/auth/reset-password', async (request, reply) => {
+    const { token, newPassword } = request.body || {};
+    if (!token || !newPassword) return reply.code(400).send({ error: 'Token and new password required' });
+    if (newPassword.length < 4) return reply.code(400).send({ error: 'Password minimal 4 karakter' });
+
+    const reset = await queryOne(
+      'SELECT * FROM password_resets WHERE token = $1 AND used = 0 AND expires_at > NOW()',
+      [token]
+    );
+    if (!reset) return reply.code(400).send({ error: 'Invalid or expired token' });
+
+    const hash = await hashPassword(newPassword);
+    await query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, reset.user_id]);
+    await query('UPDATE password_resets SET used = 1 WHERE id = $1', [reset.id]);
+
+    return { success: true, message: 'Password has been reset' };
   });
 }
