@@ -152,6 +152,11 @@ export const platform = {
   },
 };
 
+// Home
+export const home = {
+  dashboard: () => request('/home/dashboard'),
+};
+
 // Signup (public)
 export const signup = (data) => request('/signup', { method: 'POST', body: data });
 

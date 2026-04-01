@@ -29,6 +29,7 @@ import userRoutes from './routes/users.js';
 import financeModule from './routes/finance/index.js';
 import platformRoutes from './routes/platform.js';
 import signupRoutes from './routes/signup.js';
+import homeRoutes from './routes/home.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3000');
@@ -89,6 +90,7 @@ async function start() {
   await app.register(financeModule);
   await app.register(platformRoutes);
   await app.register(signupRoutes);
+  await app.register(homeRoutes);
 
   // Static frontend
   const adminDistPath = join(__dirname, '..', 'admin', 'dist');

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useDarkMode } from '../hooks/useDarkMode'
+import Breadcrumb from './Breadcrumb'
 
 const SIDEBAR_GROUPS = [
   {
@@ -68,6 +70,7 @@ export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const { dark, toggle: toggleDark } = useDarkMode()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     const initial = {}
@@ -123,6 +126,12 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 py-1.5">
+          {/* Home link */}
+          <NavLink to="/" end onClick={() => setSidebarOpen(false)}
+            className={({ isActive }) => `block px-3 py-2 text-xs mb-1 ${isActive ? 'bg-white/10 text-white font-medium' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+            Home
+          </NavLink>
+
           {SIDEBAR_GROUPS.filter(canSeeGroup).map(group => (
             <div key={group.label} className="mb-0.5">
               <button
@@ -160,9 +169,14 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="p-2.5 border-t border-gray-800 flex items-center justify-between">
-          <span className="text-[10px] text-gray-600 uppercase">{user?.role}</span>
-          <button onClick={handleLogout} className="text-[10px] text-gray-600 hover:text-red-400 transition-colors">
+        <div className="p-2.5 border-t border-gray-800 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-gray-600 uppercase">{user?.role}</span>
+            <button onClick={toggleDark} className="text-[10px] text-gray-600 hover:text-white" title="Toggle dark mode">
+              {dark ? '☀️' : '🌙'}
+            </button>
+          </div>
+          <button onClick={handleLogout} className="w-full text-left text-[10px] text-gray-600 hover:text-red-400 transition-colors">
             Logout
           </button>
         </div>
@@ -178,8 +192,9 @@ export default function Layout() {
           <span className="text-sm font-semibold text-gray-700">{currentModule}</span>
         </header>
 
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900">
           <div className="p-4 lg:p-5">
+            <Breadcrumb />
             <Outlet />
           </div>
         </main>

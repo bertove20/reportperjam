@@ -3,7 +3,6 @@
  */
 
 import { queryRows, queryOne } from '../../storage/postgres.js';
-import { tWhere } from '../../middleware/tenant-scope.js';
 
 export default async function (app) {
   app.get('/api/finance/reports', async (request) => {
@@ -82,5 +81,45 @@ export default async function (app) {
       filters: { month, year, brand_id, start_date, end_date },
       byBrand, byTeam, byPayment, grandTotal,
     };
+  });
+
+  // GET /api/finance/reports/export-csv — download CSV
+  app.get('/api/finance/reports/export-csv', async (request, reply) => {
+    const tid = request.tenantId;
+    const { month, year, start_date, end_date } = request.query;
+
+    let dateFilter = '';
+    const params = [tid];
+    let idx = 2;
+
+    if (start_date && end_date) {
+      dateFilter = `AND t.transaction_date BETWEEN $${idx++} AND $${idx++}`;
+      params.push(start_date, end_date);
+    } else if (month && year) {
+      dateFilter = `AND EXTRACT(MONTH FROM t.transaction_date) = $${idx++} AND EXTRACT(YEAR FROM t.transaction_date) = $${idx++}`;
+      params.push(parseInt(month), parseInt(year));
+    }
+
+    const rows = await queryRows(`
+      SELECT t.transaction_date, b.name as brand, pm.name as payment_method, pm.currency,
+        t.amount, t.amount_idr, ec.name as category, tm.name as team, t.description
+      FROM transactions t
+      LEFT JOIN finance_brands b ON t.brand_id = b.id
+      LEFT JOIN payment_methods pm ON t.payment_method_id = pm.id
+      LEFT JOIN expense_categories ec ON t.category_id = ec.id
+      LEFT JOIN teams tm ON t.team_id = tm.id
+      WHERE t.tenant_id = $1 ${dateFilter}
+      ORDER BY t.transaction_date ASC
+    `, params);
+
+    // Build CSV
+    const header = 'Date,Brand,Payment Method,Currency,Amount,Amount IDR,Category,Team,Description';
+    const csv = [header, ...rows.map(r =>
+      [r.transaction_date?.toISOString?.()?.split('T')[0] || r.transaction_date, r.brand, r.payment_method, r.currency, r.amount, r.amount_idr, r.category, r.team, `"${(r.description || '').replace(/"/g, '""')}"`].join(',')
+    )].join('\n');
+
+    reply.header('Content-Type', 'text/csv');
+    reply.header('Content-Disposition', `attachment; filename="finance-report-${month || 'all'}-${year || ''}.csv"`);
+    return csv;
   });
 }

@@ -15,10 +15,12 @@ import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
 import { DateTime } from '../utils/datetime.js';
 import { logger } from '../logger.js';
+import { tWhere } from '../middleware/tenant-scope.js';
 
 export default async function actionRoutes(app) {
   // POST /api/actions/fetch-now
   app.post('/api/actions/fetch-now', async (request) => {
+    const tid = request.tenantId;
     const { brandKey } = request.body || {};
     const now = DateTime.now();
     const hour = now.hour;
@@ -26,8 +28,8 @@ export default async function actionRoutes(app) {
 
     if (!hour) return { success: false, message: 'Cannot fetch at hour 0 (midnight)' };
 
-    logger.info({ hour, brandKey }, 'Manual fetch triggered');
-    fetchAllBrands(dateStr, hour).catch(err => {
+    logger.info({ hour, brandKey, tenantId: tid }, 'Manual fetch triggered');
+    fetchAllBrands(dateStr, hour, tid).catch(err => {
       logger.error({ err: err.message }, 'Manual fetch failed');
     });
 
@@ -36,14 +38,15 @@ export default async function actionRoutes(app) {
 
   // POST /api/actions/report-now
   app.post('/api/actions/report-now', async (request) => {
+    const tid = request.tenantId;
     const { brandKey } = request.body || {};
     const now = DateTime.now();
     const hour = now.hour || 23;
     const dateStr = now.toDateStr();
     const yesterdayStr = now.yesterday().toDateStr();
 
-    logger.info({ hour, brandKey }, 'Manual report triggered');
-    sendTimReports(hour, dateStr, yesterdayStr, brandKey).catch(err => {
+    logger.info({ hour, brandKey, tenantId: tid }, 'Manual report triggered');
+    sendTimReports(hour, dateStr, yesterdayStr, brandKey, tid).catch(err => {
       logger.error({ err: err.message }, 'Manual report failed');
     });
 
@@ -52,12 +55,13 @@ export default async function actionRoutes(app) {
 
   // POST /api/actions/fetch-finish
   app.post('/api/actions/fetch-finish', async (request) => {
+    const tid = request.tenantId;
     const { date } = request.body || {};
     const now = DateTime.now();
     const targetDate = date || now.yesterday().toDateStr();
 
-    logger.info({ date: targetDate }, 'Manual FINISH fetch triggered');
-    fetchAllBrandsFinish(targetDate).catch(err => {
+    logger.info({ date: targetDate, tenantId: tid }, 'Manual FINISH fetch triggered');
+    fetchAllBrandsFinish(targetDate, tid).catch(err => {
       logger.error({ err: err.message }, 'Manual FINISH fetch failed');
     });
 
@@ -66,6 +70,7 @@ export default async function actionRoutes(app) {
 
   // POST /api/actions/backfill
   app.post('/api/actions/backfill', async (request) => {
+    const tid = request.tenantId;
     const { date, brandKey } = request.body || {};
     const now = DateTime.now();
     const todayStr = now.toDateStr();
@@ -73,7 +78,7 @@ export default async function actionRoutes(app) {
     const targetDate = date || todayStr;
     const isToday = targetDate === todayStr;
 
-    const brands = getBrands();
+    const brands = getBrands(tid);
     const targetBrands = brandKey ? brands.filter(b => b.key === brandKey) : brands;
     const results = [];
 
@@ -103,13 +108,13 @@ export default async function actionRoutes(app) {
 
           // Simpan jam sekarang
           if (now.hour > 0) {
-            upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, todayRegis);
+            upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, todayRegis, tid);
             saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(todayRegis)}`);
           }
 
           // Interpolasi jam kosong hari ini
           if (now.hour > 1) {
-            const filled = interpolateMissingHours(brand.key, todayStr, now.hour);
+            const filled = await interpolateMissingHours(brand.key, todayStr, now.hour, tid);
             if (filled > 0) saved.push(`Interpolasi ${filled} jam kosong`);
           }
 
@@ -119,7 +124,7 @@ export default async function actionRoutes(app) {
             const ydRegis = await fetchAsia77Regis(
               brand.key, brand.domain, ydDDMMYYYY, brand.userId, brand.cookieHeader
             );
-            upsertSnapshot(brand.key, yesterdayStr, 24, ydTrx, ydRegis);
+            upsertSnapshot(brand.key, yesterdayStr, 24, ydTrx, ydRegis, tid);
             saved.push(`FINISH ${yesterdayStr}: TRX=${fmtNum(ydTrx)} REGIS=${fmtNum(ydRegis)}`);
           }
 
@@ -145,12 +150,12 @@ export default async function actionRoutes(app) {
             const cumulativeRegis = hourlyRegis[h] || 0;
 
             const existing = await queryOne(
-              'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3',
-              [brand.key, targetDate, h]
+              'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
+              [brand.key, targetDate, h, tid]
             );
 
             const trx = existing?.trx > 0 ? existing.trx : null;
-            await upsertSnapshotNullable(brand.key, targetDate, h, trx, cumulativeRegis);
+            await upsertSnapshotNullable(brand.key, targetDate, h, trx, cumulativeRegis, tid);
             regisFilled++;
           }
           saved.push(`REGIS per jam: 23 jam terisi`);
@@ -163,7 +168,7 @@ export default async function actionRoutes(app) {
             finishTrx = daily.yddpapp || null;
           }
 
-          await upsertSnapshotNullable(brand.key, targetDate, 24, finishTrx, totalRegis);
+          await upsertSnapshotNullable(brand.key, targetDate, 24, finishTrx, totalRegis, tid);
           saved.push(`FINISH: TRX=${finishTrx ? fmtNum(finishTrx) : 'N/A'} REGIS=${fmtNum(totalRegis)}`);
         }
 
@@ -184,6 +189,7 @@ export default async function actionRoutes(app) {
 
   // GET /api/actions/missing-hours
   app.get('/api/actions/missing-hours', async (request, reply) => {
+    const tid = request.tenantId;
     const { brand, date } = request.query;
     if (!brand || !date) return reply.code(400).send({ error: 'brand and date required' });
 
@@ -193,8 +199,8 @@ export default async function actionRoutes(app) {
     const maxHour = isToday ? now.hour : 23;
 
     const existingRows = await queryRows(
-      'SELECT hour FROM hourly_snapshots WHERE brand = $1 AND date = $2 ORDER BY hour',
-      [brand, date]
+      'SELECT hour FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND tenant_id = $3 ORDER BY hour',
+      [brand, date, tid]
     );
     const existing = existingRows.map(r => r.hour);
 
@@ -252,10 +258,10 @@ function buildHourlyRegis(members) {
   return cumulative;
 }
 
-async function interpolateMissingHours(brandKey, date, maxHour) {
+async function interpolateMissingHours(brandKey, date, maxHour, tid) {
   const existing = await queryRows(
-    'SELECT hour, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour <= $3 ORDER BY hour',
-    [brandKey, date, maxHour]
+    'SELECT hour, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour <= $3 AND tenant_id = $4 ORDER BY hour',
+    [brandKey, date, maxHour, tid]
   );
 
   if (existing.length < 2) return 0;
@@ -282,7 +288,7 @@ async function interpolateMissingHours(brandKey, date, maxHour) {
     const trx = Math.round(prev.trx + (next.trx - prev.trx) * ratio);
     const regis = Math.round(prev.regis + (next.regis - prev.regis) * ratio);
 
-    await upsertSnapshot(brandKey, date, h, trx, regis);
+    await upsertSnapshot(brandKey, date, h, trx, regis, tid);
     map.set(h, { hour: h, trx, regis });
     filled++;
   }

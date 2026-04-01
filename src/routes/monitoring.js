@@ -5,18 +5,20 @@
 import { queryLogs, getLogStats, getLatestLog } from '../storage/log-store.js';
 import { getAllBrands } from '../storage/brand-store.js';
 import { queryAuditLogs } from '../storage/audit-store.js';
+import { tWhere } from '../middleware/tenant-scope.js';
 
 const startTime = Date.now();
 
 export default async function monitoringRoutes(app) {
-  app.get('/api/status', async () => {
-    const brands = await getAllBrands(true);
-    const stats = await getLogStats();
+  app.get('/api/status', async (request) => {
+    const tid = request.tenantId;
+    const brands = await getAllBrands(true, tid);
+    const stats = await getLogStats(tid);
 
     const brandStatus = [];
     for (const b of brands) {
-      const lastFetch = await getLatestLog(b.key, 'fetch');
-      const lastSend = await getLatestLog(b.key, 'send');
+      const lastFetch = await getLatestLog(b.key, 'fetch', tid);
+      const lastSend = await getLatestLog(b.key, 'send', tid);
       brandStatus.push({
         key: b.key, name: b.name, engine: b.engine, is_active: b.is_active,
         lastFetch: lastFetch ? { status: lastFetch.status, at: lastFetch.created_at, message: lastFetch.message } : null,
@@ -46,11 +48,13 @@ export default async function monitoringRoutes(app) {
   });
 
   app.get('/api/logs', async (request) => {
+    const tid = request.tenantId;
     const { type, brand, status, limit, offset } = request.query;
     return queryLogs({
       type, brand, status,
       limit: parseInt(limit) || 50,
       offset: parseInt(offset) || 0,
+      tenantId: tid,
     });
   });
 }

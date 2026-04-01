@@ -38,6 +38,9 @@ const PlatformTenants = lazy(() => import('./pages/platform/Tenants'))
 const PlatformPlans = lazy(() => import('./pages/platform/Plans'))
 const Signup = lazy(() => import('./pages/Signup'))
 
+// Home
+const Home = lazy(() => import('./pages/Home'))
+
 const Loader = () => <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading...</div>
 
 function ProtectedRoute({ children }) {
@@ -55,8 +58,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            {/* Default: Report Dashboard */}
-            <Route index element={<ReportDashboard />} />
+            {/* Home: Combined Dashboard */}
+            <Route index element={<Home />} />
 
             {/* Report Bot */}
             <Route path="report">
