@@ -38,9 +38,14 @@ async function loginBrand(brand) {
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
       '--window-size=1280,800',
     ],
     defaultViewport: { width: 1280, height: 800 },
+    ...(process.env.PUPPETEER_EXECUTABLE_PATH && {
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+    }),
   });
 
   const page = await browser.newPage();

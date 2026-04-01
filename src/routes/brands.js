@@ -108,8 +108,11 @@ export default async function brandRoutes(app) {
       const puppeteer = await import('puppeteer');
       const browser = await puppeteer.default.launch({
         headless: false,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,800'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--window-size=1280,800'],
         defaultViewport: { width: 1280, height: 800 },
+        ...(process.env.PUPPETEER_EXECUTABLE_PATH && {
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+        }),
       });
 
       const page = await browser.newPage();
