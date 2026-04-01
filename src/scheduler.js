@@ -15,10 +15,10 @@ import { logger } from './logger.js';
 const jobs = [];
 
 export async function startScheduler() {
-  const timezone = await getSetting('timezone') || process.env.TZ || 'Asia/Phnom_Penh';
-  const cronFetch = await getSetting('cron_fetch') || '0 1-23 * * *';
-  const cronReport = await getSetting('cron_report') || '5 1-23 * * *';
-  const cronFinish = await getSetting('cron_finish') || '5 0 * * *';
+  const timezone = await getSetting('timezone', 'report') || process.env.TZ || 'Asia/Phnom_Penh';
+  const cronFetch = await getSetting('cron_fetch', 'report') || '0 1-23 * * *';
+  const cronReport = await getSetting('cron_report', 'report') || '5 1-23 * * *';
+  const cronFinish = await getSetting('cron_finish', 'report') || '5 0 * * *';
 
   // ─── :00 Fetch (jam 1-23) ───
   jobs.push(cron.schedule(cronFetch, async () => {

@@ -6,20 +6,20 @@ import { query, queryRows, queryOne } from './postgres.js';
 
 export async function getAllBrands(activeOnly = true) {
   const where = activeOnly ? 'WHERE is_active = 1' : '';
-  return queryRows(`SELECT * FROM brands ${where} ORDER BY sort_order ASC, id ASC`);
+  return queryRows(`SELECT * FROM report_brands ${where} ORDER BY sort_order ASC, id ASC`);
 }
 
 export async function getBrandByKey(key) {
-  return queryOne('SELECT * FROM brands WHERE key = $1', [key]);
+  return queryOne('SELECT * FROM report_brands WHERE key = $1', [key]);
 }
 
 export async function getBrandById(id) {
-  return queryOne('SELECT * FROM brands WHERE id = $1', [id]);
+  return queryOne('SELECT * FROM report_brands WHERE id = $1', [id]);
 }
 
 export async function createBrand(data) {
   const result = await query(`
-    INSERT INTO brands (key, name, engine, domain, is_active, sort_order,
+    INSERT INTO report_brands (key, name, engine, domain, is_active, sort_order,
       user_id, cookie_header, auth_user, auth_pass, auth_pin,
       primary_color, logo_base64)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -58,23 +58,23 @@ export async function updateBrand(key, data) {
   fields.push(`updated_at = NOW()`);
   values.push(key);
 
-  await query(`UPDATE brands SET ${fields.join(', ')} WHERE key = $${idx}`, values);
+  await query(`UPDATE report_brands SET ${fields.join(', ')} WHERE key = $${idx}`, values);
   return getBrandByKey(key);
 }
 
 export async function deleteBrand(key) {
-  await query("UPDATE brands SET is_active = 0, updated_at = NOW() WHERE key = $1", [key]);
+  await query("UPDATE report_brands SET is_active = 0, updated_at = NOW() WHERE key = $1", [key]);
 }
 
 export async function hardDeleteBrand(key) {
-  await query('DELETE FROM brands WHERE key = $1', [key]);
+  await query('DELETE FROM report_brands WHERE key = $1', [key]);
 }
 
 export async function updateBrandCookie(key, cookieHeader) {
-  await query("UPDATE brands SET cookie_header = $1, updated_at = NOW() WHERE key = $2", [cookieHeader, key]);
+  await query("UPDATE report_brands SET cookie_header = $1, updated_at = NOW() WHERE key = $2", [cookieHeader, key]);
 }
 
 export async function getBrandCount() {
-  const row = await queryOne('SELECT COUNT(*) as count FROM brands WHERE is_active = 1');
+  const row = await queryOne('SELECT COUNT(*) as count FROM report_brands WHERE is_active = 1');
   return parseInt(row.count);
 }

@@ -20,7 +20,7 @@ const DELAY_BETWEEN_BRANDS = 3000;
  * Kirim Tim report untuk semua brand (atau satu brand spesifik)
  */
 export async function sendTimReports(currentHour, todayDate, yesterdayDate, brandKey = null) {
-  const groupId = await getSetting('tg_report_group') || process.env.TG_REPORT_GROUP;
+  const groupId = await getSetting('tg_report_group', 'report') || process.env.TG_REPORT_GROUP;
   if (!groupId) {
     logger.warn('TG_REPORT_GROUP not set — skipping Tim reports');
     return;

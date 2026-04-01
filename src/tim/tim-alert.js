@@ -9,8 +9,8 @@ import { logger } from '../logger.js';
  * Kirim alert text ke Telegram group
  */
 export async function sendAlert(message) {
-  const token = getSetting('tg_bot_token') || process.env.TG_BOT_TOKEN;
-  const groupId = getSetting('tg_report_group') || process.env.TG_REPORT_GROUP;
+  const token = await getSetting('tg_bot_token', 'report') || process.env.TG_BOT_TOKEN;
+  const groupId = await getSetting('tg_report_group', 'report') || process.env.TG_REPORT_GROUP;
 
   if (!token || !groupId) {
     logger.warn('Alert: TG not configured, skipping');

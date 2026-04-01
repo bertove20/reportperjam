@@ -8,7 +8,7 @@ import { getSetting } from '../storage/settings-store.js';
 import { logger } from '../logger.js';
 
 async function getBotToken() {
-  return await getSetting('tg_bot_token') || process.env.TG_BOT_TOKEN;
+  return await getSetting('tg_bot_token', 'report') || process.env.TG_BOT_TOKEN;
 }
 
 /**
