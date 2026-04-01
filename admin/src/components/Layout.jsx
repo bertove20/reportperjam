@@ -6,11 +6,12 @@ const SIDEBAR_GROUPS = [
   {
     label: 'REPORT BOT',
     module: 'report',
-    color: '#3b82f6',      // blue
+    color: '#3b82f6',
     bgActive: 'bg-blue-600/20',
     textActive: 'text-blue-400',
     headerBg: 'bg-blue-500/10',
     borderColor: 'border-blue-500/30',
+    defaultOpen: true,
     items: [
       { to: '/report', label: 'Dashboard', end: true },
       { to: '/report/brands', label: 'Brands' },
@@ -24,11 +25,12 @@ const SIDEBAR_GROUPS = [
   {
     label: 'KEUANGAN',
     module: 'finance',
-    color: '#10b981',      // emerald
+    color: '#10b981',
     bgActive: 'bg-emerald-600/20',
     textActive: 'text-emerald-400',
     headerBg: 'bg-emerald-500/10',
     borderColor: 'border-emerald-500/30',
+    defaultOpen: false,
     items: [
       { to: '/finance', label: 'Dashboard', end: true },
       { to: '/finance/transactions', label: 'Transaksi' },
@@ -40,20 +42,9 @@ const SIDEBAR_GROUPS = [
       { to: '/finance/loans', label: 'Pinjaman' },
       { to: '/finance/reports', label: 'Laporan' },
       { to: '/finance/settings', label: 'Settings', role: 'superadmin' },
-    ],
-  },
-  {
-    label: 'ADMIN',
-    module: 'admin',
-    color: '#f59e0b',      // amber
-    bgActive: 'bg-amber-600/20',
-    textActive: 'text-amber-400',
-    headerBg: 'bg-amber-500/10',
-    borderColor: 'border-amber-500/30',
-    role: 'superadmin',
-    items: [
-      { to: '/admin/users', label: 'Users' },
-      { to: '/admin/divisions', label: 'Divisions' },
+      // Admin items masuk di sini
+      { to: '/admin/users', label: 'Users', role: 'superadmin' },
+      { to: '/admin/divisions', label: 'Divisions', role: 'superadmin' },
     ],
   },
 ]
@@ -61,7 +52,11 @@ const SIDEBAR_GROUPS = [
 export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [collapsed, setCollapsed] = useState({})
+  const [collapsed, setCollapsed] = useState(() => {
+    const initial = {}
+    SIDEBAR_GROUPS.forEach(g => { initial[g.label] = !g.defaultOpen })
+    return initial
+  })
 
   const handleLogout = () => { logout(); navigate('/login') }
   const toggleGroup = (label) => setCollapsed(prev => ({ ...prev, [label]: !prev[label] }))
