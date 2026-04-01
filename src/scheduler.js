@@ -10,6 +10,8 @@ import { getSetting } from './storage/settings-store.js';
 import { fetchAllBrands, fetchAllBrandsFinish } from './api/fetch-brand.js';
 import { sendTimReports } from './tim/tim-orchestrator.js';
 import { cleanOldLogs } from './storage/log-store.js';
+import { keepaliveAsia77 } from './api/asia77-engine.js';
+import { getBrands } from './tim/brand-configs.js';
 import { DateTime } from './utils/datetime.js';
 import { logger } from './logger.js';
 
@@ -65,6 +67,15 @@ export function startScheduler() {
       logger.info('00:05 FINISH complete');
     } catch (err) {
       logger.error({ err }, '00:05 FINISH failed');
+    }
+  }, { timezone }));
+
+  // ─── Keepalive: setiap 15 menit, hit /clearMessage supaya session tidak expire ───
+  jobs.push(cron.schedule('*/15 * * * *', async () => {
+    const brands = getBrands().filter(b => b.engine === 'asia77');
+    for (const brand of brands) {
+      const ok = await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader);
+      if (!ok) logger.warn({ brand: brand.key }, 'Keepalive failed');
     }
   }, { timezone }));
 

@@ -10,6 +10,7 @@ import { fetchSyntechDaily, fetchSyntechRegis } from './syntech-engine.js';
 import { upsertSnapshot } from '../storage/sqlite.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
+import { sendFetchErrorAlert } from '../tim/tim-alert.js';
 import { DateTime } from '../utils/datetime.js';
 import { logger } from '../logger.js';
 
@@ -31,6 +32,7 @@ async function withRetry(fn, label, retries = 3) {
 export async function fetchAllBrands(dateStr, hour) {
   const dt = new DateTime();
   const brands = getBrands();
+  const errors = [];
 
   for (const brand of brands) {
     const start = Date.now();
@@ -78,7 +80,13 @@ export async function fetchAllBrands(dateStr, hour) {
       const duration = Date.now() - start;
       logger.error({ brand: brand.key, hour, err: err.message }, 'Brand fetch failed');
       insertLog('fetch', brand.key, 'error', err.message, duration);
+      errors.push({ brand: brand.name || brand.key, error: err.message });
     }
+  }
+
+  // Kirim alert ke Telegram jika ada error
+  if (errors.length > 0) {
+    sendFetchErrorAlert(errors, hour).catch(e => logger.error({ err: e.message }, 'Alert send failed'));
   }
 }
 
@@ -100,7 +108,14 @@ export async function fetchAllBrandsFinish(yesterdayDateStr) {
           `${brand.key} finish`
         );
         trx = daily.yddpapp || 0;
-        regis = daily.ydmmb || 0;
+
+        // REGIS: pakai /memberlist (bukan ydmmb yang angkanya salah)
+        const [y, m, d] = yesterdayDateStr.split('-');
+        const ddmmyyyy = `${d}-${m}-${y}`;
+        regis = await withRetry(
+          () => fetchAsia77Regis(brand.key, brand.domain, ddmmyyyy, brand.userId, brand.cookieHeader),
+          `${brand.key} finish regis`
+        );
 
       } else if (brand.engine === 'syntech') {
         const config = { domain: brand.domain, user: brand.user, pass: brand.pass, pin: brand.pin };

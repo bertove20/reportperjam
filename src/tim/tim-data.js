@@ -100,16 +100,23 @@ export function getTimBrandData(brandKey, todayDate, yesterdayDate, currentHour)
     }
 
     // ─── Scoreboard ───
-    const latestHour = currentHour === 0 ? 24 : currentHour;
-    const latestToday = todayMap.get(latestHour);
+    // Cari jam terakhir yang punya data (bukan currentHour yang mungkin belum ada data)
+    let latestHour = currentHour === 0 ? 24 : currentHour;
+    let latestToday = todayMap.get(latestHour);
+    if (!latestToday && currentHour > 0) {
+      // Fallback: cari jam terakhir yang ada datanya
+      for (let h = currentHour; h >= 1; h--) {
+        if (todayMap.has(h)) { latestHour = h; latestToday = todayMap.get(h); break; }
+      }
+    }
     const latestYesterday = yesterdayMap.get(latestHour);
 
-    const trxToday = latestToday?.deposit_accepted_count || 0;
-    const trxYesterday = latestYesterday?.deposit_accepted_count || 0;
+    const trxToday = latestToday?.deposit_accepted_count ?? 0;
+    const trxYesterday = latestYesterday?.deposit_accepted_count ?? 0;
     const trxGap = trxToday - trxYesterday;
 
-    const regisToday = latestToday?.regis_total || 0;
-    const regisYesterday = latestYesterday?.regis_total || 0;
+    const regisToday = latestToday?.regis_total ?? 0;
+    const regisYesterday = latestYesterday?.regis_total ?? 0;
     const regisGap = regisToday - regisYesterday;
 
     const scoreboard = {
@@ -117,22 +124,23 @@ export function getTimBrandData(brandKey, todayDate, yesterdayDate, currentHour)
       trxBadge: trxGap > 0 ? 'AHEAD' : trxGap < 0 ? 'BEHIND' : 'EVEN',
       regisToday, regisYesterday, regisGap,
       regisBadge: regisGap > 0 ? 'AHEAD' : regisGap < 0 ? 'BEHIND' : 'EVEN',
+      latestHour, // jam data terakhir yang dipakai
     };
 
     // ─── Projection ───
-    const effectiveHour = currentHour === 0 ? 24 : currentHour;
+    const effectiveHour = currentHour === 0 ? 24 : latestHour;
     const pace = effectiveHour > 0 ? Math.round(trxToday / effectiveHour) : 0;
     const estEOD = pace * 24;
     const finishYesterday = yesterdayMap.get(24);
-    const target = finishYesterday?.deposit_accepted_count || 0;
+    const target = finishYesterday?.deposit_accepted_count ?? 0;
 
     const projection = {
       trx: { pace, estEOD, target, selisih: estEOD - target },
       regis: {
         pace: effectiveHour > 0 ? Math.round(regisToday / effectiveHour) : 0,
         estEOD: effectiveHour > 0 ? Math.round(regisToday / effectiveHour) * 24 : 0,
-        target: finishYesterday?.regis_total || 0,
-        selisih: 0, // calculated below
+        target: finishYesterday?.regis_total ?? 0,
+        selisih: 0,
       },
     };
     projection.regis.selisih = projection.regis.estEOD - projection.regis.target;

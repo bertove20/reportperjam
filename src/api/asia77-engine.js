@@ -23,30 +23,70 @@ function getCookieHeader(brandKey, cookieHeaderParam) {
 }
 
 /**
+ * Validasi API response — detect Cloudflare block, session expired, dll
+ */
+function validateResponse(response, brandKey) {
+  const body = response.body;
+
+  // Response bukan JSON (Cloudflare challenge page)
+  if (typeof body === 'string') {
+    if (body.includes('cf-challenge') || body.includes('cloudflare')) {
+      throw new Error(`Cloudflare block — cookie expired, perlu login ulang`);
+    }
+    if (body.includes('login') || body.includes('Login')) {
+      throw new Error(`Session expired — redirect ke login, perlu login ulang`);
+    }
+    throw new Error(`Response bukan JSON — kemungkinan cookie expired`);
+  }
+
+  // ec = -1 atau undefined
+  if (body?.ec === -1) {
+    throw new Error(`Session expired (ec=-1) — perlu login ulang`);
+  }
+  if (body?.ec === undefined || body?.ec === null) {
+    throw new Error(`Cookie expired (ec=undefined) — perlu login ulang`);
+  }
+  if (body?.ec !== 0) {
+    throw new Error(`API error: ec=${body.ec}, msg=${body.msg || 'unknown'}`);
+  }
+
+  return body;
+}
+
+/**
  * Fetch data harian (TRX + basic stats)
  */
 export async function fetchAsia77Daily(brandKey, domain, cookieHeaderParam = null) {
   const cookieHeader = getCookieHeader(brandKey, cookieHeaderParam);
-  if (!cookieHeader) throw new Error(`No cookies for ${brandKey}`);
+  if (!cookieHeader) throw new Error(`No cookies for ${brandKey} — perlu login`);
 
   const url = `https://${domain}/daily/info/list`;
 
-  const response = await gotScraping.post(url, {
-    json: { isNew: false },
-    headers: { Cookie: cookieHeader },
-    headerGeneratorOptions: {
-      browsers: [{ name: 'chrome', minVersion: 120 }],
-      operatingSystems: ['macos'],
-    },
-    responseType: 'json',
-    timeout: { request: 30000 },
-  });
-
-  if (response.body?.ec !== 0) {
-    throw new Error(`Asia77 API error: ec=${response.body?.ec}`);
+  let response;
+  try {
+    response = await gotScraping.post(url, {
+      json: { isNew: false },
+      headers: { Cookie: cookieHeader },
+      headerGeneratorOptions: {
+        browsers: [{ name: 'chrome', minVersion: 120 }],
+        operatingSystems: ['macos'],
+      },
+      responseType: 'json',
+      timeout: { request: 30000 },
+    });
+  } catch (err) {
+    // Network error, timeout, dll
+    if (err.code === 'ETIMEDOUT' || err.message?.includes('timeout')) {
+      throw new Error(`Panel ${domain} timeout — server mungkin down`);
+    }
+    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
+      throw new Error(`Panel ${domain} tidak bisa diakses — cek domain/internet`);
+    }
+    throw err;
   }
 
-  return response.body.data;
+  const body = validateResponse(response, brandKey);
+  return body.data;
 }
 
 /**
@@ -92,9 +132,7 @@ export async function fetchAsia77Regis(brandKey, domain, dateDDMMYYYY, userId, c
 }
 
 /**
- * Fetch SEMUA member dengan join_time untuk satu tanggal (full pagination)
- * Dipakai untuk backfill REGIS per jam dari data historis.
- * @returns {Array} [{join_time, username, ...}, ...]
+ * Fetch SEMUA member dengan join_time (full pagination)
  */
 export async function fetchAllMembersWithTime(brandKey, domain, dateDDMMYYYY, userId, cookieHeaderParam = null) {
   const cookieHeader = getCookieHeader(brandKey, cookieHeaderParam);
