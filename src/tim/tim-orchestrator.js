@@ -2,7 +2,7 @@
  * Tim Report Orchestrator
  *
  * Koordinasi: query data → generate HTML → screenshot → kirim Telegram
- * Brands dibaca dari database.
+ * Brands dibaca dari database (async).
  */
 
 import { getBrands } from './brand-configs.js';
@@ -20,20 +20,20 @@ const DELAY_BETWEEN_BRANDS = 3000;
  * Kirim Tim report untuk semua brand (atau satu brand spesifik)
  */
 export async function sendTimReports(currentHour, todayDate, yesterdayDate, brandKey = null) {
-  const groupId = getSetting('tg_report_group') || process.env.TG_REPORT_GROUP;
+  const groupId = await getSetting('tg_report_group') || process.env.TG_REPORT_GROUP;
   if (!groupId) {
     logger.warn('TG_REPORT_GROUP not set — skipping Tim reports');
     return;
   }
 
-  const allBrands = getBrands();
+  const allBrands = await getBrands();
   const brands = brandKey ? allBrands.filter(b => b.key === brandKey) : allBrands;
   let successCount = 0;
 
   for (const brand of brands) {
     const start = Date.now();
     try {
-      const data = getTimBrandData(brand.key, todayDate, yesterdayDate, currentHour);
+      const data = await getTimBrandData(brand.key, todayDate, yesterdayDate, currentHour);
       const html = buildTimHtml(brand, data, todayDate, currentHour);
       const png = await renderPng(html);
 
@@ -45,7 +45,7 @@ export async function sendTimReports(currentHour, todayDate, yesterdayDate, bran
 
       const duration = Date.now() - start;
       logger.info({ brand: brand.key, hour: currentHour }, 'Tim report sent');
-      insertLog('send', brand.key, 'success', `${hourLabel}`, duration);
+      await insertLog('send', brand.key, 'success', `${hourLabel}`, duration);
 
       if (brands.indexOf(brand) < brands.length - 1) {
         await new Promise(r => setTimeout(r, DELAY_BETWEEN_BRANDS));
@@ -54,7 +54,7 @@ export async function sendTimReports(currentHour, todayDate, yesterdayDate, bran
     } catch (err) {
       const duration = Date.now() - start;
       logger.error({ brand: brand.key, err: err.message }, 'Tim report failed for brand');
-      insertLog('send', brand.key, 'error', err.message, duration);
+      await insertLog('send', brand.key, 'error', err.message, duration);
     }
   }
 

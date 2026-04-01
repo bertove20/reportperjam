@@ -1,8 +1,5 @@
 /**
  * Scheduler — Cron jobs untuk fetch data dan kirim report
- *
- * Membaca jadwal dari database settings.
- * Extracted dari index.js supaya bisa dipakai oleh server.js.
  */
 
 import cron from 'node-cron';
@@ -17,11 +14,11 @@ import { logger } from './logger.js';
 
 const jobs = [];
 
-export function startScheduler() {
-  const timezone = getSetting('timezone') || process.env.TZ || 'Asia/Phnom_Penh';
-  const cronFetch = getSetting('cron_fetch') || '0 1-23 * * *';
-  const cronReport = getSetting('cron_report') || '5 1-23 * * *';
-  const cronFinish = getSetting('cron_finish') || '5 0 * * *';
+export async function startScheduler() {
+  const timezone = await getSetting('timezone') || process.env.TZ || 'Asia/Phnom_Penh';
+  const cronFetch = await getSetting('cron_fetch') || '0 1-23 * * *';
+  const cronReport = await getSetting('cron_report') || '5 1-23 * * *';
+  const cronFinish = await getSetting('cron_finish') || '5 0 * * *';
 
   // ─── :00 Fetch (jam 1-23) ───
   jobs.push(cron.schedule(cronFetch, async () => {
@@ -70,9 +67,9 @@ export function startScheduler() {
     }
   }, { timezone }));
 
-  // ─── Keepalive: setiap 15 menit, hit /clearMessage supaya session tidak expire ───
+  // ─── Keepalive: setiap 15 menit ───
   jobs.push(cron.schedule('*/15 * * * *', async () => {
-    const brands = getBrands().filter(b => b.engine === 'asia77');
+    const brands = (await getBrands()).filter(b => b.engine === 'asia77');
     for (const brand of brands) {
       const ok = await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader);
       if (!ok) logger.warn({ brand: brand.key }, 'Keepalive failed');
@@ -80,8 +77,8 @@ export function startScheduler() {
   }, { timezone }));
 
   // ─── Daily cleanup: hapus logs > 30 hari ───
-  jobs.push(cron.schedule('0 3 * * *', () => {
-    const deleted = cleanOldLogs(30);
+  jobs.push(cron.schedule('0 3 * * *', async () => {
+    const deleted = await cleanOldLogs(30);
     if (deleted > 0) logger.info({ deleted }, 'Old logs cleaned');
   }, { timezone }));
 

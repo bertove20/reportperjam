@@ -29,8 +29,19 @@ echo -e "${NC}"
 echo -e "${YELLOW}[1/8] Updating system...${NC}"
 apt update && apt upgrade -y
 
-# ─── STEP 2: Install Node.js 22 ───
-echo -e "${YELLOW}[2/8] Installing Node.js 22...${NC}"
+# ─── STEP 2: Install PostgreSQL ───
+echo -e "${YELLOW}[2/9] Installing PostgreSQL...${NC}"
+apt install -y postgresql postgresql-contrib
+systemctl enable postgresql
+systemctl start postgresql
+
+# Create database and user
+sudo -u postgres psql -c "CREATE DATABASE reportbot;" 2>/dev/null || echo "  DB already exists"
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'reportbot123';" 2>/dev/null
+echo -e "${GREEN}  PostgreSQL ready${NC}"
+
+# ─── STEP 3: Install Node.js 22 ───
+echo -e "${YELLOW}[3/9] Installing Node.js 22...${NC}"
 if ! command -v node &> /dev/null || [[ $(node -v | cut -d. -f1 | tr -d v) -lt 22 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt install -y nodejs
@@ -109,6 +120,10 @@ TZ=Asia/Phnom_Penh
 PORT=3000
 ENCRYPTION_KEY=$ENCRYPTION_KEY
 JWT_SECRET=$JWT_SECRET
+
+# Puppeteer
+# PostgreSQL
+DATABASE_URL=postgresql://postgres:reportbot123@localhost:5432/reportbot
 
 # Puppeteer
 PUPPETEER_EXECUTABLE_PATH=$CHROMIUM_PATH

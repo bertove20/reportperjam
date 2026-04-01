@@ -1,51 +1,38 @@
 /**
- * Settings Store — key-value app settings
+ * Settings Store — key-value app settings (PostgreSQL)
  */
 
-import { getDb } from './sqlite.js';
+import { query, queryRows, queryOne } from './postgres.js';
 
-export function getSetting(key) {
-  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key);
+export async function getSetting(key) {
+  const row = await queryOne('SELECT value FROM settings WHERE key = $1', [key]);
   return row?.value ?? null;
 }
 
-export function getAllSettings() {
-  const rows = getDb().prepare('SELECT key, value FROM settings').all();
+export async function getAllSettings() {
+  const rows = await queryRows('SELECT key, value FROM settings');
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
 }
 
-export function setSetting(key, value) {
-  getDb().prepare(`
+export async function setSetting(key, value) {
+  await query(`
     INSERT INTO settings (key, value, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
-  `).run(key, String(value));
+    VALUES ($1, $2, NOW())
+    ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `, [key, String(value)]);
 }
 
-export function setSettings(obj) {
-  const stmt = getDb().prepare(`
-    INSERT INTO settings (key, value, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
-  `);
-
-  const transaction = getDb().transaction((entries) => {
-    for (const [key, value] of entries) {
-      stmt.run(key, String(value));
-    }
-  });
-
-  transaction(Object.entries(obj));
+export async function setSettings(obj) {
+  for (const [key, value] of Object.entries(obj)) {
+    await setSetting(key, value);
+  }
 }
 
-export function deleteSetting(key) {
-  getDb().prepare('DELETE FROM settings WHERE key = ?').run(key);
+export async function deleteSetting(key) {
+  await query('DELETE FROM settings WHERE key = $1', [key]);
 }
 
-/**
- * Initialize default settings jika belum ada
- */
-export function initDefaultSettings() {
+export async function initDefaultSettings() {
   const defaults = {
     tg_bot_token: process.env.TG_BOT_TOKEN || '',
     tg_report_group: process.env.TG_REPORT_GROUP || '',
@@ -55,15 +42,7 @@ export function initDefaultSettings() {
     cron_finish: '5 0 * * *',
   };
 
-  const stmt = getDb().prepare(`
-    INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)
-  `);
-
-  const transaction = getDb().transaction(() => {
-    for (const [key, value] of Object.entries(defaults)) {
-      stmt.run(key, value);
-    }
-  });
-
-  transaction();
+  for (const [key, value] of Object.entries(defaults)) {
+    await query(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO NOTHING`, [key, value]);
+  }
 }

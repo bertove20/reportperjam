@@ -15,7 +15,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 
-import { initDatabase } from './storage/sqlite.js';
+import { initDatabase } from './storage/postgres.js';
 import { initDefaultSettings } from './storage/settings-store.js';
 import { registerAuth } from './middleware/auth.js';
 import { startScheduler } from './scheduler.js';
@@ -35,8 +35,8 @@ const JWT_SECRET = process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || 'dev-
 
 async function start() {
   // 1. Database
-  initDatabase();
-  initDefaultSettings();
+  await initDatabase();
+  await initDefaultSettings();
   logger.info('Database ready');
 
   // 2. Fastify
@@ -90,7 +90,7 @@ async function start() {
   logger.info({ port: PORT }, `Fastify server running on http://localhost:${PORT}`);
 
   // 3. Scheduler
-  startScheduler();
+  await startScheduler();
   logger.info('Tim Report Bot SaaS ready');
 }
 

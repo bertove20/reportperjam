@@ -7,7 +7,7 @@
 
 import { fetchAsia77Daily, fetchAsia77Regis } from './asia77-engine.js';
 import { fetchSyntechDaily, fetchSyntechRegis } from './syntech-engine.js';
-import { upsertSnapshot } from '../storage/sqlite.js';
+import { upsertSnapshot } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
 import { sendFetchErrorAlert } from '../tim/tim-alert.js';
@@ -31,7 +31,7 @@ async function withRetry(fn, label, retries = 3) {
  */
 export async function fetchAllBrands(dateStr, hour) {
   const dt = new DateTime();
-  const brands = getBrands();
+  const brands = await getBrands();
   const errors = [];
 
   for (const brand of brands) {
@@ -71,7 +71,7 @@ export async function fetchAllBrands(dateStr, hour) {
         );
       }
 
-      upsertSnapshot(brand.key, dateStr, hour, trx, regis);
+      await upsertSnapshot(brand.key, dateStr, hour, trx, regis);
       const duration = Date.now() - start;
       logger.info({ brand: brand.key, hour, trx, regis }, 'Data stored');
       insertLog('fetch', brand.key, 'success', `trx=${trx} regis=${regis}`, duration);
@@ -94,7 +94,7 @@ export async function fetchAllBrands(dateStr, hour) {
  * Fetch FINISH (hour=24) untuk semua brand
  */
 export async function fetchAllBrandsFinish(yesterdayDateStr) {
-  const brands = getBrands();
+  const brands = await getBrands();
 
   for (const brand of brands) {
     const start = Date.now();
@@ -135,7 +135,7 @@ export async function fetchAllBrandsFinish(yesterdayDateStr) {
         );
       }
 
-      upsertSnapshot(brand.key, yesterdayDateStr, 24, trx, regis);
+      await upsertSnapshot(brand.key, yesterdayDateStr, 24, trx, regis);
       const duration = Date.now() - start;
       logger.info({ brand: brand.key, trx, regis }, 'FINISH stored');
       insertLog('finish', brand.key, 'success', `trx=${trx} regis=${regis}`, duration);

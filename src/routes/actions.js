@@ -10,7 +10,7 @@
 import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
 import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime } from '../api/asia77-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
-import { upsertSnapshot, upsertSnapshotNullable, getDb } from '../storage/sqlite.js';
+import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
 import { DateTime } from '../utils/datetime.js';
@@ -144,13 +144,13 @@ export default async function actionRoutes(app) {
           for (let h = 1; h <= 23; h++) {
             const cumulativeRegis = hourlyRegis[h] || 0;
 
-            const existing = getDb().prepare(
-              'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = ? AND date = ? AND hour = ?'
-            ).get(brand.key, targetDate, h);
+            const existing = await queryOne(
+              'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3',
+              [brand.key, targetDate, h]
+            );
 
-            // Simpan TRX yang sudah ada (dari bot real-time), atau null
             const trx = existing?.trx > 0 ? existing.trx : null;
-            upsertSnapshotNullable(brand.key, targetDate, h, trx, cumulativeRegis);
+            await upsertSnapshotNullable(brand.key, targetDate, h, trx, cumulativeRegis);
             regisFilled++;
           }
           saved.push(`REGIS per jam: 23 jam terisi`);
@@ -163,19 +163,19 @@ export default async function actionRoutes(app) {
             finishTrx = daily.yddpapp || null;
           }
 
-          upsertSnapshotNullable(brand.key, targetDate, 24, finishTrx, totalRegis);
+          await upsertSnapshotNullable(brand.key, targetDate, 24, finishTrx, totalRegis);
           saved.push(`FINISH: TRX=${finishTrx ? fmtNum(finishTrx) : 'N/A'} REGIS=${fmtNum(totalRegis)}`);
         }
 
         const duration = Date.now() - start;
         results.push({ brand: brand.key, success: true, saved, duration });
-        insertLog('backfill', brand.key, 'success', saved.join(' | '), duration);
+        await insertLog('backfill', brand.key, 'success', saved.join(' | '), duration);
 
       } catch (err) {
         const duration = Date.now() - start;
         logger.error({ brand: brand.key, err: err.message }, 'Backfill failed');
         results.push({ brand: brand.key, success: false, error: err.message });
-        insertLog('backfill', brand.key, 'error', err.message, duration);
+        await insertLog('backfill', brand.key, 'error', err.message, duration);
       }
     }
 
@@ -192,9 +192,11 @@ export default async function actionRoutes(app) {
     const isToday = date === todayStr;
     const maxHour = isToday ? now.hour : 23;
 
-    const existing = getDb().prepare(
-      'SELECT hour FROM hourly_snapshots WHERE brand = ? AND date = ? ORDER BY hour'
-    ).all(brand, date).map(r => r.hour);
+    const existingRows = await queryRows(
+      'SELECT hour FROM hourly_snapshots WHERE brand = $1 AND date = $2 ORDER BY hour',
+      [brand, date]
+    );
+    const existing = existingRows.map(r => r.hour);
 
     const missing = [];
     for (let h = 1; h <= maxHour; h++) {
@@ -250,10 +252,11 @@ function buildHourlyRegis(members) {
   return cumulative;
 }
 
-function interpolateMissingHours(brandKey, date, maxHour) {
-  const existing = getDb().prepare(
-    'SELECT hour, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = ? AND date = ? AND hour <= ? ORDER BY hour'
-  ).all(brandKey, date, maxHour);
+async function interpolateMissingHours(brandKey, date, maxHour) {
+  const existing = await queryRows(
+    'SELECT hour, deposit_accepted_count as trx, regis_total as regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour <= $3 ORDER BY hour',
+    [brandKey, date, maxHour]
+  );
 
   if (existing.length < 2) return 0;
 
@@ -279,7 +282,7 @@ function interpolateMissingHours(brandKey, date, maxHour) {
     const trx = Math.round(prev.trx + (next.trx - prev.trx) * ratio);
     const regis = Math.round(prev.regis + (next.regis - prev.regis) * ratio);
 
-    upsertSnapshot(brandKey, date, h, trx, regis);
+    await upsertSnapshot(brandKey, date, h, trx, regis);
     map.set(h, { hour: h, trx, regis });
     filled++;
   }
