@@ -61,9 +61,17 @@ export default function Layout() {
   const handleLogout = () => { logout(); navigate('/login') }
   const toggleGroup = (label) => setCollapsed(prev => ({ ...prev, [label]: !prev[label] }))
 
-  const canSee = (item) => {
-    if (!item.role) return true
-    return user?.role === item.role || user?.role === 'superadmin'
+  const canSeeItem = (item) => {
+    if (user?.role === 'superadmin') return true
+    if (item.role === 'superadmin') return false
+    return true
+  }
+
+  const canSeeGroup = (group) => {
+    if (user?.role === 'superadmin') return true
+    // Check if user has permission for this module
+    const perms = user?.permissions || []
+    return perms.some(p => p.module === group.module)
   }
 
   return (
@@ -77,7 +85,7 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 py-1.5">
-          {SIDEBAR_GROUPS.filter(canSee).map(group => (
+          {SIDEBAR_GROUPS.filter(canSeeGroup).map(group => (
             <div key={group.label} className="mb-0.5">
               {/* Group Header with color accent */}
               <button
@@ -93,7 +101,7 @@ export default function Layout() {
               {/* Items */}
               {!collapsed[group.label] && (
                 <div className="py-0.5">
-                  {group.items.filter(canSee).map(item => (
+                  {group.items.filter(canSeeItem).map(item => (
                     <NavLink
                       key={item.to}
                       to={item.to}
