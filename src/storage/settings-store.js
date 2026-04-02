@@ -6,7 +6,7 @@ import { query, queryRows, queryOne } from './postgres.js';
 
 export async function getSetting(key, module = 'global', tenantId = 0) {
   const row = await queryOne(
-    'SELECT value FROM settings WHERE key = $1 AND module = $2 AND (tenant_id = $3 OR tenant_id = $3)',
+    'SELECT value FROM settings WHERE key = $1 AND module = $2 AND (tenant_id = $3 OR tenant_id IS NULL) ORDER BY tenant_id DESC LIMIT 1',
     [key, module, tenantId]
   );
   return row?.value ?? null;
@@ -14,7 +14,7 @@ export async function getSetting(key, module = 'global', tenantId = 0) {
 
 export async function getAllSettings(module = 'global', tenantId = 0) {
   const rows = await queryRows(
-    'SELECT key, value FROM settings WHERE module = $1 AND (tenant_id = $2 OR tenant_id = $2)',
+    'SELECT key, value FROM settings WHERE module = $1 AND (tenant_id = $2 OR tenant_id IS NULL) ORDER BY tenant_id DESC',
     [module, tenantId]
   );
   return Object.fromEntries(rows.map(r => [r.key, r.value]));
@@ -39,7 +39,7 @@ export async function setSettings(obj, module = 'global', tenantId = 0) {
 }
 
 export async function deleteSetting(key, module = 'global', tenantId = 0) {
-  await query('DELETE FROM settings WHERE key = $1 AND module = $2 AND (tenant_id = $3 OR tenant_id = $3)', [key, module, tenantId]);
+  await query('DELETE FROM settings WHERE key = $1 AND module = $2 AND tenant_id = $3', [key, module, tenantId]);
 }
 
 export async function initDefaultSettings() {
