@@ -36,8 +36,15 @@ export async function initDatabase() {
 
   pool = new Pool({ connectionString, max: 20 });
 
+  // Set timezone WIB (UTC+7) untuk setiap connection baru
+  pool.on('connect', (client) => {
+    client.query("SET timezone = 'Asia/Phnom_Penh'");
+  });
+
   try {
     await pool.query('SELECT NOW()');
+    // Set timezone untuk semua query di session ini
+    await pool.query("SET timezone = 'Asia/Phnom_Penh'");
   } catch (err) {
     logger.error({ err: err.message }, 'PostgreSQL connection failed');
     throw err;
