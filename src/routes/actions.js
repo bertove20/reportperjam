@@ -93,21 +93,14 @@ export default async function actionRoutes(app) {
         const saved = [];
 
         // ═══════════════════════════════════════
-        // BACKFILL: TRX per jam dari /trx/historypl + REGIS per jam dari /memberlist join_time
-        // Works for both today and past dates!
+        // BACKFILL: REGIS per jam dari /memberlist join_time
+        // TRX hanya dari auto-fetch setiap jam (tidak di-backfill)
         // ═══════════════════════════════════════
         {
           const targetDDMMYYYY = formatDDMMYYYY(targetDate);
           const maxHour = isToday ? now.hour : 23;
 
-          // 1. Fetch deposit history → TRX per jam
-          const deposits = await fetchAsia77DepositHistory(
-            brand.key, brand.domain, targetDDMMYYYY, brand.userId, brand.cookieHeader
-          );
-          const hourlyTrx = buildHourlyTrx(deposits);
-          saved.push(`Fetch ${deposits.length} deposits dari /trx/historypl`);
-
-          // 2. Fetch member list → REGIS per jam
+          // 1. Fetch member list → REGIS per jam
           const members = await fetchAllMembersWithTime(
             brand.key, brand.domain, targetDDMMYYYY, brand.userId, brand.cookieHeader
           );
@@ -115,34 +108,42 @@ export default async function actionRoutes(app) {
           const hourlyRegis = buildHourlyRegis(members);
           saved.push(`Fetch ${totalRegis} members dari /memberlist`);
 
-          // 3. Simpan per jam
+          // 2. Simpan REGIS per jam (pertahankan TRX yang sudah ada dari auto-fetch)
           let filled = 0;
           for (let h = 1; h <= maxHour; h++) {
-            const trx = hourlyTrx[h] ?? null;
             const regis = hourlyRegis[h] || 0;
-
-            // Jika sudah ada data TRX dari auto-fetch, pertahankan
             const existing = await queryOne(
               'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
               [brand.key, targetDate, h, tid]
             );
-            const finalTrx = (existing?.trx > 0) ? existing.trx : trx;
-
-            await upsertSnapshotNullable(brand.key, targetDate, h, finalTrx, regis, tid);
+            const trx = existing?.trx > 0 ? existing.trx : null;
+            await upsertSnapshotNullable(brand.key, targetDate, h, trx, regis, tid);
             filled++;
           }
-          saved.push(`${filled} jam terisi (TRX + REGIS)`);
+          saved.push(`REGIS per jam: ${filled} jam terisi`);
 
-          // 4. Simpan FINISH
-          const totalTrx = hourlyTrx[24] || (hourlyTrx[23] ?? deposits.length);
+          // 3. Simpan FINISH
           if (!isToday) {
-            await upsertSnapshotNullable(brand.key, targetDate, 24, totalTrx, totalRegis, tid);
-            saved.push(`FINISH: TRX=${fmtNum(totalTrx)} REGIS=${fmtNum(totalRegis)}`);
+            const existingFinish = await queryOne(
+              'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = 24 AND tenant_id = $3',
+              [brand.key, targetDate, tid]
+            );
+            const finishTrx = existingFinish?.trx > 0 ? existingFinish.trx : null;
+            await upsertSnapshotNullable(brand.key, targetDate, 24, finishTrx, totalRegis, tid);
+            saved.push(`FINISH: TRX=${finishTrx ? fmtNum(finishTrx) : 'N/A'} REGIS=${fmtNum(totalRegis)}`);
           }
 
-          // 5. Jika hari ini, simpan FINISH kemarin dari yddpapp
+          // 4. Jika hari ini, ambil TRX kumulatif saat ini + FINISH kemarin
           if (isToday) {
             const daily = await fetchAsia77Daily(brand.key, brand.domain, brand.cookieHeader);
+            const todayTrx = daily.dpapp || 0;
+            const currentRegis = hourlyRegis[now.hour] || totalRegis;
+
+            if (now.hour > 0) {
+              await upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, currentRegis, tid);
+              saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(currentRegis)}`);
+            }
+
             const ydTrx = daily.yddpapp || 0;
             if (ydTrx > 0) {
               const ydDDMMYYYY = formatDDMMYYYY(yesterdayStr);
@@ -153,9 +154,6 @@ export default async function actionRoutes(app) {
           }
         }
 
-        // ═══════════════════════════════════════
-        // (removed old separate today/past logic — now unified above)
-        // ═══════════════════════════════════════
         if (false) {
           const targetDDMMYYYY = formatDDMMYYYY(targetDate);
 
