@@ -25,13 +25,13 @@ async function debug() {
     // 2. Check ALL settings in database
     console.log('\n📋 STEP 2: ALL Settings in Database');
     const allSettings = await queryRows(`
-      SELECT id, key, module, tenant_id, value, updated_at 
+      SELECT key, module, tenant_id, value, updated_at 
       FROM settings 
       ORDER BY module, tenant_id DESC, key
     `);
     console.log(`Found ${allSettings.length} settings rows:`);
     allSettings.forEach(s => {
-      console.log(`  [${s.id}] ${s.module}:${s.key} (tenant_id=${s.tenant_id}) = "${s.value}"`);
+      console.log(`  ${s.module}:${s.key} (tenant_id=${s.tenant_id}) = "${s.value}"`);
     });
 
     // 3. Test getSetting for each tenant

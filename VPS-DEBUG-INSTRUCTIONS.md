@@ -45,12 +45,14 @@ Script akan menunjukkan:
 ## STEP 4: Verify database dari psql
 
 ```bash
-psql -U postgres -d reportbot -c "
-SELECT id, key, module, tenant_id, value FROM settings 
+psql -U postgres -h localhost -d reportbot -W -c "
+SELECT key, module, tenant_id, value FROM settings 
 WHERE module IN ('report', 'global') 
 ORDER BY module, tenant_id DESC, key;
 "
 ```
+
+**When prompted, enter password for postgres user**
 
 **CAPTURE OUTPUT INI JUGA**
 
@@ -59,7 +61,7 @@ ORDER BY module, tenant_id DESC, key;
 ## STEP 5: Verify tenants
 
 ```bash
-psql -U postgres -d reportbot -c "
+psql -U postgres -h localhost -d reportbot -W -c "
 SELECT id, name, slug, is_active FROM tenants;
 "
 ```
@@ -69,31 +71,27 @@ SELECT id, name, slug, is_active FROM tenants;
 ## STEP 6: Check if tg_report_group exists di settings table
 
 ```bash
-psql -U postgres -d reportbot -c "
-SELECT * FROM settings WHERE key = 'tg_report_group';
+psql -U postgres -h localhost -d reportbot -W -c "
+SELECT key, module, tenant_id, value FROM settings WHERE key = 'tg_report_group';
 "
 ```
 
 **Important**: Harus ada ROW untuk key ini!
 
-Kalau empty → TAMBAH MANUAL:
+Kalau empty → TAMBAH MANUAL (jangan lupa password):
 
 ```bash
-psql -U postgres -d reportbot -c "
-INSERT INTO settings (key, module, tenant_id, value, created_at, updated_at)
-VALUES ('tg_report_group', 'report', 1, '-4993466682', NOW(), NOW())
-ON CONFLICT(key, module, tenant_id) DO UPDATE SET value = '-4993466682';
-"
-```
+psql -U postgres -h localhost -d reportbot -W <<EOF
+INSERT INTO settings (key, module, tenant_id, value, updated_at)
+VALUES ('tg_report_group', 'report', 1, '-4993466682', NOW())
+ON CONFLICT(key, module, tenant_id) DO UPDATE SET value = '-4993466682', updated_at = NOW();
 
-Begitu juga untuk `tg_bot_token`:
+INSERT INTO settings (key, module, tenant_id, value, updated_at)
+VALUES ('tg_bot_token', 'report', 1, '8663808582:AAGmg1FALVan1s7AQK9VPsPPxzaAVyit7LY', NOW())
+ON CONFLICT(key, module, tenant_id) DO UPDATE SET value = '8663808582:AAGmg1FALVan1s7AQK9VPsPPxzaAVyit7LY', updated_at = NOW();
 
-```bash
-psql -U postgres -d reportbot -c "
-INSERT INTO settings (key, module, tenant_id, value, created_at, updated_at)
-VALUES ('tg_bot_token', 'report', 1, '8663808582:AAGmg1FALVan1s7AQK9VPsPPxzaAVyit7LY', NOW(), NOW())
-ON CONFLICT(key, module, tenant_id) DO UPDATE SET value = '8663808582:AAGmg1FALVan1s7AQK9VPsPPxzaAVyit7LY';
-"
+SELECT * FROM settings WHERE key IN ('tg_report_group', 'tg_bot_token');
+EOF
 ```
 
 ---
