@@ -50,21 +50,24 @@ export async function getTimBrandData(brandKey, todayDate, yesterdayDate, curren
       // Kolom /JAM = hari_ini[jam_ini] - hari_ini[jam_sebelum]
       let perHourTrx = null;
       let perHourRegis = null;
-      
+
       if (h === 1) {
-        // First Hour: /JAM = null (tidak ada jam sebelumnya)
         perHourTrx = null;
         perHourRegis = null;
       } else if (isFinish) {
-        // FINISH: /JAM = finish - hour23 (atau last available hour)
         const lastHour = todayMap.get(23) || todayMap.get(22) || todayMap.get(21);
-        if (todayTrx !== null && lastHour) {
-          perHourTrx = todayTrx - (lastHour.deposit_accepted_count || 0);
-          perHourRegis = (todayRegis || 0) - (lastHour.regis_total || 0);
+        if (lastHour) {
+          if (todayTrx !== null) perHourTrx = todayTrx - (lastHour.deposit_accepted_count || 0);
+          if (todayRegis !== null) perHourRegis = (todayRegis || 0) - (lastHour.regis_total || 0);
         }
-      } else if (todayTrx !== null && prevToday) {
-        perHourTrx = todayTrx - (prevToday.deposit_accepted_count || 0);
-        perHourRegis = (todayRegis || 0) - (prevToday.regis_total || 0);
+      } else if (prevToday) {
+        // TRX dan REGIS dihitung independen
+        if (todayTrx !== null && prevToday.deposit_accepted_count !== null) {
+          perHourTrx = todayTrx - (prevToday.deposit_accepted_count || 0);
+        }
+        if (todayRegis !== null && prevToday.regis_total !== null) {
+          perHourRegis = (todayRegis || 0) - (prevToday.regis_total || 0);
+        }
       }
 
       // Kolom SISA = hari_ini[jam_ini] - kemarin[jam_ini]
