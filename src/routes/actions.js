@@ -94,28 +94,42 @@ export default async function actionRoutes(app) {
 
         if (isToday) {
           // ═══════════════════════════════════════
-          // HARI INI: cara cepat (count total)
+          // HARI INI: TRX kumulatif + REGIS per jam dari join_time
           // ═══════════════════════════════════════
           const daily = await fetchAsia77Daily(brand.key, brand.domain, brand.cookieHeader);
           const todayTrx = daily.dpapp || 0;
           const ydTrx = daily.yddpapp || 0;
 
-          // Fetch regis hari ini (count cepat)
-          const todayDDMMYYYY = formatDDMMYYYY(todayStr);
-          const todayRegis = await fetchAsia77Regis(
-            brand.key, brand.domain, todayDDMMYYYY, brand.userId, brand.cookieHeader
-          );
-
-          // Simpan jam sekarang
+          // Simpan TRX di jam sekarang
           if (now.hour > 0) {
-            await upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, todayRegis, tid);
-            saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(todayRegis)}`);
-          }
+            const todayDDMMYYYY = formatDDMMYYYY(todayStr);
 
-          // Interpolasi jam kosong hari ini
-          if (now.hour > 1) {
-            const filled = await interpolateMissingHours(brand.key, todayStr, now.hour, tid);
-            if (filled > 0) saved.push(`Interpolasi ${filled} jam kosong`);
+            // Fetch semua member + join_time untuk REGIS per jam
+            const members = await fetchAllMembersWithTime(
+              brand.key, brand.domain, todayDDMMYYYY, brand.userId, brand.cookieHeader
+            );
+            const totalRegis = members.length;
+            const hourlyRegis = buildHourlyRegis(members);
+
+            // Simpan TRX di jam sekarang
+            const currentRegis = hourlyRegis[now.hour] || totalRegis;
+            await upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, currentRegis, tid);
+            saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(currentRegis)}`);
+
+            // Isi REGIS per jam yang kosong (jam 1 s/d sekarang)
+            let regisFilled = 0;
+            for (let h = 1; h < now.hour; h++) {
+              const cumulativeRegis = hourlyRegis[h] || 0;
+              const existing = await queryOne(
+                'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
+                [brand.key, todayStr, h, tid]
+              );
+              // Pertahankan TRX yang sudah ada dari auto-fetch, atau null
+              const trx = existing?.trx > 0 ? existing.trx : null;
+              await upsertSnapshotNullable(brand.key, todayStr, h, trx, cumulativeRegis, tid);
+              regisFilled++;
+            }
+            saved.push(`REGIS per jam: ${regisFilled} jam terisi (total ${fmtNum(totalRegis)} member)`);
           }
 
           // Simpan FINISH kemarin
