@@ -476,10 +476,11 @@ async function migrateToMultiTenant() {
 
 const FRESH_THRESHOLD_MS = 55 * 60 * 1000;
 
-export async function upsertSnapshot(brand, date, hour, trx, regis, tenantId = null) {
+export async function upsertSnapshot(brand, date, hour, trx, regis, tenantId = 1) {
+  const tid = tenantId || 1;
   const existing = await queryOne(
-    'SELECT updated_at FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND (tenant_id = $4 OR ($4 IS NULL AND tenant_id IS NULL))',
-    [brand, date, hour, tenantId]
+    'SELECT updated_at FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
+    [brand, date, hour, tid]
   );
 
   if (existing) {
@@ -495,13 +496,14 @@ export async function upsertSnapshot(brand, date, hour, trx, regis, tenantId = n
       deposit_accepted_count = EXCLUDED.deposit_accepted_count,
       regis_total = EXCLUDED.regis_total,
       updated_at = NOW()
-  `, [brand, date, hour, trx, regis, tenantId]);
+  `, [brand, date, hour, trx, regis, tid]);
 }
 
-export async function upsertSnapshotNullable(brand, date, hour, trx, regis, tenantId = null) {
+export async function upsertSnapshotNullable(brand, date, hour, trx, regis, tenantId = 1) {
+  const tid = tenantId || 1;
   const existing = await queryOne(
-    'SELECT deposit_accepted_count FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND (tenant_id = $4 OR ($4 IS NULL AND tenant_id IS NULL))',
-    [brand, date, hour, tenantId]
+    'SELECT deposit_accepted_count FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
+    [brand, date, hour, tid]
   );
 
   const finalTrx = trx !== null && trx !== undefined ? trx : (existing?.deposit_accepted_count ?? null);
@@ -514,19 +516,21 @@ export async function upsertSnapshotNullable(brand, date, hour, trx, regis, tena
       deposit_accepted_count = EXCLUDED.deposit_accepted_count,
       regis_total = EXCLUDED.regis_total,
       updated_at = NOW()
-  `, [brand, date, hour, finalTrx, regis, tenantId]);
+  `, [brand, date, hour, finalTrx, regis, tid]);
 }
 
-export async function getSnapshots(brand, date, tenantId = null) {
+export async function getSnapshots(brand, date, tenantId = 1) {
+  const tid = tenantId || 1;
   return queryRows(
-    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND (tenant_id = $3 OR ($3 IS NULL AND tenant_id IS NULL)) ORDER BY hour ASC',
-    [brand, date, tenantId]
+    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND tenant_id = $3 ORDER BY hour ASC',
+    [brand, date, tid]
   );
 }
 
-export async function getSnapshot(brand, date, hour, tenantId = null) {
+export async function getSnapshot(brand, date, hour, tenantId = 1) {
+  const tid = tenantId || 1;
   return queryOne(
-    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND (tenant_id = $4 OR ($4 IS NULL AND tenant_id IS NULL))',
-    [brand, date, hour, tenantId]
+    'SELECT hour, deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
+    [brand, date, hour, tid]
   );
 }
