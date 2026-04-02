@@ -14,7 +14,7 @@
  */
 
 import puppeteer from 'puppeteer';
-import { initDatabase } from '../src/storage/sqlite.js';
+import { initDatabase } from '../src/storage/postgres.js';
 import { getAllBrands, updateBrandCookie } from '../src/storage/brand-store.js';
 import { logger } from '../src/logger.js';
 import { createInterface } from 'readline';
@@ -97,7 +97,7 @@ async function loginBrand(brand) {
   });
 
   // Simpan ke database
-  updateBrandCookie(brand.key, cookieHeader);
+  await updateBrandCookie(brand.key, cookieHeader);
   console.log(`   ✅ Cookie saved to database for ${brand.key}`);
 
   // Test: coba akses /user/home
@@ -130,10 +130,10 @@ function parseCookieHeader(header, domain) {
 }
 
 async function main() {
-  initDatabase();
+  await initDatabase();
 
   const targetKey = process.argv[2]; // optional: BRAND_E
-  const allBrands = getAllBrands(true);
+  const allBrands = await getAllBrands(true);
 
   if (allBrands.length === 0) {
     console.log('❌ Tidak ada brand aktif di database. Tambah brand dulu via admin panel.');

@@ -4,9 +4,9 @@
  * Usage: node --env-file=.env scripts/test-now.js
  */
 
-import { initDatabase } from '../src/storage/sqlite.js';
+import { initDatabase } from '../src/storage/postgres.js';
 import { fetchAsia77Daily, fetchAsia77Regis } from '../src/api/asia77-engine.js';
-import { upsertSnapshot, getSnapshots } from '../src/storage/sqlite.js';
+import { upsertSnapshot, getSnapshots } from '../src/storage/postgres.js';
 import { getTimBrandData } from '../src/tim/tim-data.js';
 import { buildTimHtml } from '../src/tim/tim-html.js';
 import { renderPng } from '../src/tim/tim-renderer.js';
