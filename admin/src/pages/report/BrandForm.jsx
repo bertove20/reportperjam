@@ -52,7 +52,7 @@ export default function BrandForm() {
 
   const saveMutation = useMutation({
     mutationFn: (data) => isEdit ? brandsApi.update(key, data) : brandsApi.create(data),
-    onSuccess: () => navigate('/brands'),
+    onSuccess: () => navigate('/report/brands'),
     onError: (err) => setError(err.message),
   })
 
@@ -203,7 +203,7 @@ export default function BrandForm() {
             className="bg-blue-600 text-white px-6 py-2 rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
             {saveMutation.isPending ? 'Saving...' : isEdit ? 'Update Brand' : 'Create Brand'}
           </button>
-          <button type="button" onClick={() => navigate('/brands')}
+          <button type="button" onClick={() => navigate('/report/brands')}
             className="bg-gray-200 text-gray-700 px-6 py-2 rounded text-sm hover:bg-gray-300">
             Cancel
           </button>

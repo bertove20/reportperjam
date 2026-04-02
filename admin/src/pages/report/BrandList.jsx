@@ -49,7 +49,7 @@ export default function BrandList() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Brand Management</h1>
-        <Link to="/brands/new" className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+        <Link to="/report/brands/new" className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
           + Add Brand
         </Link>
       </div>
