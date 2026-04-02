@@ -61,6 +61,16 @@ export default function App() {
             {/* Home: Combined Dashboard */}
             <Route index element={<Home />} />
 
+            {/* Legacy redirects (URL lama → baru) */}
+            <Route path="brands" element={<Navigate to="/report/brands" />} />
+            <Route path="brands/new" element={<Navigate to="/report/brands/new" />} />
+            <Route path="brands/:key/edit" element={<Navigate to="/report/brands" />} />
+            <Route path="reports" element={<Navigate to="/report/hourly" />} />
+            <Route path="reports/history" element={<Navigate to="/report/history" />} />
+            <Route path="reports/comparison" element={<Navigate to="/report/comparison" />} />
+            <Route path="settings" element={<Navigate to="/report/settings" />} />
+            <Route path="logs" element={<Navigate to="/report/logs" />} />
+
             {/* Report Bot */}
             <Route path="report">
               <Route index element={<ReportDashboard />} />
