@@ -8,7 +8,7 @@
  */
 
 import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
-import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime } from '../api/asia77-engine.js';
+import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia77DepositHistory } from '../api/asia77-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
 import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
@@ -92,60 +92,71 @@ export default async function actionRoutes(app) {
 
         const saved = [];
 
-        if (isToday) {
-          // ═══════════════════════════════════════
-          // HARI INI: TRX kumulatif + REGIS per jam dari join_time
-          // ═══════════════════════════════════════
-          const daily = await fetchAsia77Daily(brand.key, brand.domain, brand.cookieHeader);
-          const todayTrx = daily.dpapp || 0;
-          const ydTrx = daily.yddpapp || 0;
+        // ═══════════════════════════════════════
+        // BACKFILL: TRX per jam dari /trx/historypl + REGIS per jam dari /memberlist join_time
+        // Works for both today and past dates!
+        // ═══════════════════════════════════════
+        {
+          const targetDDMMYYYY = formatDDMMYYYY(targetDate);
+          const maxHour = isToday ? now.hour : 23;
 
-          // Simpan TRX di jam sekarang
-          if (now.hour > 0) {
-            const todayDDMMYYYY = formatDDMMYYYY(todayStr);
+          // 1. Fetch deposit history → TRX per jam
+          const deposits = await fetchAsia77DepositHistory(
+            brand.key, brand.domain, targetDDMMYYYY, brand.userId, brand.cookieHeader
+          );
+          const hourlyTrx = buildHourlyTrx(deposits);
+          saved.push(`Fetch ${deposits.length} deposits dari /trx/historypl`);
 
-            // Fetch semua member + join_time untuk REGIS per jam
-            const members = await fetchAllMembersWithTime(
-              brand.key, brand.domain, todayDDMMYYYY, brand.userId, brand.cookieHeader
+          // 2. Fetch member list → REGIS per jam
+          const members = await fetchAllMembersWithTime(
+            brand.key, brand.domain, targetDDMMYYYY, brand.userId, brand.cookieHeader
+          );
+          const totalRegis = members.length;
+          const hourlyRegis = buildHourlyRegis(members);
+          saved.push(`Fetch ${totalRegis} members dari /memberlist`);
+
+          // 3. Simpan per jam
+          let filled = 0;
+          for (let h = 1; h <= maxHour; h++) {
+            const trx = hourlyTrx[h] ?? null;
+            const regis = hourlyRegis[h] || 0;
+
+            // Jika sudah ada data TRX dari auto-fetch, pertahankan
+            const existing = await queryOne(
+              'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
+              [brand.key, targetDate, h, tid]
             );
-            const totalRegis = members.length;
-            const hourlyRegis = buildHourlyRegis(members);
+            const finalTrx = (existing?.trx > 0) ? existing.trx : trx;
 
-            // Simpan TRX di jam sekarang
-            const currentRegis = hourlyRegis[now.hour] || totalRegis;
-            await upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, currentRegis, tid);
-            saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(currentRegis)}`);
+            await upsertSnapshotNullable(brand.key, targetDate, h, finalTrx, regis, tid);
+            filled++;
+          }
+          saved.push(`${filled} jam terisi (TRX + REGIS)`);
 
-            // Isi REGIS per jam yang kosong (jam 1 s/d sekarang)
-            let regisFilled = 0;
-            for (let h = 1; h < now.hour; h++) {
-              const cumulativeRegis = hourlyRegis[h] || 0;
-              const existing = await queryOne(
-                'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
-                [brand.key, todayStr, h, tid]
-              );
-              // Pertahankan TRX yang sudah ada dari auto-fetch, atau null
-              const trx = existing?.trx > 0 ? existing.trx : null;
-              await upsertSnapshotNullable(brand.key, todayStr, h, trx, cumulativeRegis, tid);
-              regisFilled++;
+          // 4. Simpan FINISH
+          const totalTrx = hourlyTrx[24] || (hourlyTrx[23] ?? deposits.length);
+          if (!isToday) {
+            await upsertSnapshotNullable(brand.key, targetDate, 24, totalTrx, totalRegis, tid);
+            saved.push(`FINISH: TRX=${fmtNum(totalTrx)} REGIS=${fmtNum(totalRegis)}`);
+          }
+
+          // 5. Jika hari ini, simpan FINISH kemarin dari yddpapp
+          if (isToday) {
+            const daily = await fetchAsia77Daily(brand.key, brand.domain, brand.cookieHeader);
+            const ydTrx = daily.yddpapp || 0;
+            if (ydTrx > 0) {
+              const ydDDMMYYYY = formatDDMMYYYY(yesterdayStr);
+              const ydRegis = await fetchAsia77Regis(brand.key, brand.domain, ydDDMMYYYY, brand.userId, brand.cookieHeader);
+              await upsertSnapshot(brand.key, yesterdayStr, 24, ydTrx, ydRegis, tid);
+              saved.push(`FINISH ${yesterdayStr}: TRX=${fmtNum(ydTrx)} REGIS=${fmtNum(ydRegis)}`);
             }
-            saved.push(`REGIS per jam: ${regisFilled} jam terisi (total ${fmtNum(totalRegis)} member)`);
           }
+        }
 
-          // Simpan FINISH kemarin
-          if (ydTrx > 0) {
-            const ydDDMMYYYY = formatDDMMYYYY(yesterdayStr);
-            const ydRegis = await fetchAsia77Regis(
-              brand.key, brand.domain, ydDDMMYYYY, brand.userId, brand.cookieHeader
-            );
-            await upsertSnapshot(brand.key, yesterdayStr, 24, ydTrx, ydRegis, tid);
-            saved.push(`FINISH ${yesterdayStr}: TRX=${fmtNum(ydTrx)} REGIS=${fmtNum(ydRegis)}`);
-          }
-
-        } else {
-          // ═══════════════════════════════════════
-          // HARI LALU: parse join_time per jam
-          // ═══════════════════════════════════════
+        // ═══════════════════════════════════════
+        // (removed old separate today/past logic — now unified above)
+        // ═══════════════════════════════════════
+        if (false) {
           const targetDDMMYYYY = formatDDMMYYYY(targetDate);
 
           // Fetch semua member + join_time
@@ -257,6 +268,29 @@ function buildHourlyRegis(members) {
   const counts = new Array(24).fill(0);
   for (const m of members) {
     const match = m.join_time?.match(/(\d{2}):(\d{2}):(\d{2})$/);
+    if (match) counts[parseInt(match[1])]++;
+  }
+
+  const cumulative = {};
+  let total = 0;
+  for (let h = 1; h <= 23; h++) {
+    total += counts[h - 1];
+    cumulative[h] = total;
+  }
+  total += counts[23];
+  cumulative[24] = total;
+
+  return cumulative;
+}
+
+/**
+ * Parse rcdtm dari deposit history → kumulatif TRX per jam
+ * rcdtm format: "02-04-2026 20:10:58"
+ */
+function buildHourlyTrx(deposits) {
+  const counts = new Array(24).fill(0);
+  for (const dp of deposits) {
+    const match = dp.rcdtm?.match(/(\d{2}):(\d{2}):(\d{2})$/);
     if (match) counts[parseInt(match[1])]++;
   }
 

@@ -173,6 +173,59 @@ export async function fetchAllMembersWithTime(brandKey, domain, dateDDMMYYYY, us
 }
 
 /**
+ * Fetch deposit history (accepted) untuk satu tanggal — dengan pagination
+ * Dipakai untuk backfill TRX per jam dari data historis
+ * @returns {Array} [{rcdtm, amt, ...}, ...]
+ */
+export async function fetchAsia77DepositHistory(brandKey, domain, dateDDMMYYYY, userId, cookieHeaderParam = null) {
+  const cookieHeader = getCookieHeader(brandKey, cookieHeaderParam);
+  if (!cookieHeader) throw new Error(`No cookies for ${brandKey}`);
+
+  const url = `https://${domain}/trx/historypl`;
+  const deposits = [];
+  let page = 1;
+  const limit = 500;
+
+  while (true) {
+    const response = await gotScraping.post(url, {
+      json: {
+        idusBr: userId,
+        startdate: dateDDMMYYYY,
+        enddate: dateDDMMYYYY,
+        level: 5,
+        usernameBr: '',
+        page,
+        type: '1',
+        mbids: ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','16','49','50','82','83','115','148','149','150','151','152','153','181'],
+        limit,
+        bo: true,
+        st: '10',
+      },
+      headers: {
+        Cookie: cookieHeader,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': `https://${domain}/dp/history`,
+      },
+      headerGeneratorOptions: {
+        browsers: [{ name: 'chrome', minVersion: 120 }],
+        operatingSystems: ['macos'],
+      },
+      responseType: 'json',
+      timeout: { request: 30000 },
+    });
+
+    const batch = response.body?.trx || [];
+    deposits.push(...batch);
+
+    if (batch.length < limit) break;
+    page++;
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return deposits;
+}
+
+/**
  * Keepalive — panggil setiap 15 menit supaya session tidak expire
  */
 export async function keepaliveAsia77(brandKey, domain, cookieHeaderParam = null) {
