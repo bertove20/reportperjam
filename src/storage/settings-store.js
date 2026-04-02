@@ -25,21 +25,31 @@ export async function getModuleSettings(module, tenantId = 0) {
 }
 
 export async function setSetting(key, value, module = 'global', tenantId = 0) {
+  // Defensive: ensure module and key are strings, not objects
+  const safeModule = typeof module === 'string' ? module : 'global';
+  const safeKey = typeof key === 'string' ? key : String(key);
+  const safeValue = String(value);
+  
   await query(`
     INSERT INTO settings (key, module, tenant_id, value, updated_at)
     VALUES ($1, $2, $3, $4, NOW())
     ON CONFLICT(key, module, tenant_id) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-  `, [key, module, tenantId, String(value)]);
+  `, [safeKey, safeModule, tenantId, safeValue]);
 }
 
 export async function setSettings(obj, module = 'global', tenantId = 0) {
+  // Defensive: ensure module is always a string
+  const safeModule = typeof module === 'string' ? module : 'global';
+  
   for (const [key, value] of Object.entries(obj)) {
-    await setSetting(key, value, module, tenantId);
+    await setSetting(key, value, safeModule, tenantId);
   }
 }
 
 export async function deleteSetting(key, module = 'global', tenantId = 0) {
-  await query('DELETE FROM settings WHERE key = $1 AND module = $2 AND tenant_id = $3', [key, module, tenantId]);
+  // Defensive: ensure module is always string
+  const safeModule = typeof module === 'string' ? module : 'global';
+  await query('DELETE FROM settings WHERE key = $1 AND module = $2 AND tenant_id = $3', [key, safeModule, tenantId]);
 }
 
 export async function initDefaultSettings() {
