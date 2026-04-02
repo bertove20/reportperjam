@@ -92,16 +92,18 @@ async function start() {
   await app.register(signupRoutes);
   await app.register(homeRoutes);
 
-  // Static frontend (no cache for HTML, cache for assets)
+  // Static frontend
   const adminDistPath = join(__dirname, '..', 'admin', 'dist');
   if (existsSync(adminDistPath)) {
     await app.register(fastifyStatic, {
       root: adminDistPath,
       prefix: '/',
-      wildcard: false,
-      setHeaders: (res, path) => {
-        if (path.endsWith('.html')) {
+      decorateReply: true,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
       },
     });
