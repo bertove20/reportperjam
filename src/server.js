@@ -95,28 +95,29 @@ async function start() {
   // Static frontend
   const adminDistPath = join(__dirname, '..', 'admin', 'dist');
   if (existsSync(adminDistPath)) {
+    // Serve /assets/* explicitly (JS, CSS, images)
     await app.register(fastifyStatic, {
-      root: adminDistPath,
-      prefix: '/',
+      root: join(adminDistPath, 'assets'),
+      prefix: '/assets/',
       decorateReply: true,
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith('.html')) {
-          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        } else {
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        }
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       },
     });
+
+    // Serve other static files (favicon, icons, etc)
+    app.get('/favicon.svg', (req, reply) => reply.sendFile('favicon.svg', adminDistPath));
+    app.get('/favicon.ico', (req, reply) => reply.sendFile('favicon.ico', adminDistPath));
   }
 
-  // SPA fallback
+  // SPA fallback — all non-API routes return index.html
   app.setNotFoundHandler((request, reply) => {
     if (request.url.startsWith('/api/')) {
       return reply.code(404).send({ error: 'API route not found' });
     }
     if (existsSync(adminDistPath)) {
       reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
-      return reply.sendFile('index.html');
+      return reply.sendFile('index.html', adminDistPath);
     }
     return reply.code(404).send({ error: 'Frontend not built' });
   });
