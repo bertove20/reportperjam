@@ -36,9 +36,11 @@ export async function initDatabase() {
 
   pool = new Pool({ connectionString, max: 20 });
 
-  // Set timezone WIB (UTC+7) untuk setiap connection baru
+  // Set timezone WIB (UTC+7) untuk setiap connection baru — gunakan callback untuk avoid concurrent query
   pool.on('connect', (client) => {
-    client.query("SET timezone = 'Asia/Phnom_Penh'");
+    client.query("SET timezone = 'Asia/Phnom_Penh'", (err) => {
+      if (err) logger.warn({ err: err.message }, 'Failed to set timezone on new connection');
+    });
   });
 
   try {
