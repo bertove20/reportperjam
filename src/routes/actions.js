@@ -78,7 +78,7 @@ export default async function actionRoutes(app) {
     const targetDate = date || todayStr;
     const isToday = targetDate === todayStr;
 
-    const brands = getBrands(tid);
+    const brands = await getBrands(tid);
     const targetBrands = brandKey ? brands.filter(b => b.key === brandKey) : brands;
     const results = [];
 
