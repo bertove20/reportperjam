@@ -35,7 +35,7 @@ export async function createBrand(data) {
   `, [
     data.key, data.name, data.engine, data.domain,
     data.is_active ?? 1, data.sort_order ?? 0,
-    data.user_id ?? 0, data.cookie_header ?? null,
+    data.user_id ?? 0, data.cookie_header?.replace(/[\r\n]/g, '').trim() || null,
     data.auth_user ?? null, data.auth_pass ?? null, data.auth_pin ?? null,
     data.primary_color ?? '#7c3aed', data.logo_base64 ?? null,
     data.tenant_id ?? null,
@@ -86,10 +86,12 @@ export async function hardDeleteBrand(key) {
 }
 
 export async function updateBrandCookie(key, cookieHeader, tenantId = null) {
+  // Auto-clean: hapus newline, carriage return, trim whitespace
+  const clean = cookieHeader?.replace(/[\r\n]/g, '').trim() || '';
   if (tenantId) {
-    await query("UPDATE report_brands SET cookie_header = $1, updated_at = NOW() WHERE key = $2 AND tenant_id = $3", [cookieHeader, key, tenantId]);
+    await query("UPDATE report_brands SET cookie_header = $1, updated_at = NOW() WHERE key = $2 AND tenant_id = $3", [clean, key, tenantId]);
   } else {
-    await query("UPDATE report_brands SET cookie_header = $1, updated_at = NOW() WHERE key = $2", [cookieHeader, key]);
+    await query("UPDATE report_brands SET cookie_header = $1, updated_at = NOW() WHERE key = $2", [clean, key]);
   }
 }
 
