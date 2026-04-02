@@ -84,10 +84,10 @@ export async function startScheduler() {
     }
   }, { timezone: defaultTz }));
 
-  // ─── Daily cleanup ───
-  jobs.push(cron.schedule('0 3 * * *', async () => {
-    const deleted = await cleanOldLogs(30);
-    if (deleted > 0) logger.info({ deleted }, 'Old logs cleaned');
+  // ─── Weekly cleanup: setiap Senin jam 03:00, hapus log > 7 hari ───
+  jobs.push(cron.schedule('0 3 * * 1', async () => {
+    const deleted = await cleanOldLogs(7);
+    if (deleted > 0) logger.info({ deleted }, 'Weekly log cleanup: old logs deleted');
   }, { timezone: defaultTz }));
 
   logger.info('Multi-tenant scheduler started');

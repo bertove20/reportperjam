@@ -2,10 +2,9 @@
  * Monitoring Routes — Status, logs (PostgreSQL)
  */
 
-import { queryLogs, getLogStats, getLatestLog } from '../storage/log-store.js';
+import { queryLogs, getLogStats, getLatestLog, getBrandLogSummary } from '../storage/log-store.js';
 import { getAllBrands } from '../storage/brand-store.js';
 import { queryAuditLogs } from '../storage/audit-store.js';
-import { tWhere } from '../middleware/tenant-scope.js';
 
 const startTime = Date.now();
 
@@ -45,6 +44,12 @@ export default async function monitoringRoutes(app) {
       offset: parseInt(offset) || 0,
     });
     return logs;
+  });
+
+  // GET /api/logs/brand-summary — ringkasan per brand (7 hari terakhir)
+  app.get('/api/logs/brand-summary', async (request) => {
+    const tid = request.tenantId;
+    return getBrandLogSummary(tid);
   });
 
   app.get('/api/logs', async (request) => {
