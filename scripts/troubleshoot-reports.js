@@ -1,6 +1,6 @@
-#!/bin/bash
-# VPS Scheduler Troubleshoot — Debug report pengiriman
-# Usage: cd /opt/reportperjam && node --env-file=.env scripts/troubleshoot-reports.js
+#!/usr/bin/env node
+// VPS Scheduler Troubleshoot — Debug report pengiriman
+// Usage: cd /opt/reportperjam && node --env-file=.env scripts/troubleshoot-reports.js
 
 import { logger } from '../src/logger.js';
 import { queryRows, queryOne } from '../src/storage/postgres.js';
