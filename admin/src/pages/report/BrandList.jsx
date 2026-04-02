@@ -101,7 +101,7 @@ export default function BrandList() {
                     <button onClick={() => handleFetch(brand.key)} className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
                       Fetch
                     </button>
-                    <Link to={`/brands/${brand.key}/edit`} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
+                    <Link to={`/report/brands/${brand.key}/edit`} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
                       Edit
                     </Link>
                     <button
