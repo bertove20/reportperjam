@@ -108,7 +108,7 @@ export default async function actionRoutes(app) {
 
           // Simpan jam sekarang
           if (now.hour > 0) {
-            upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, todayRegis, tid);
+            await upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, todayRegis, tid);
             saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(todayRegis)}`);
           }
 
@@ -124,7 +124,7 @@ export default async function actionRoutes(app) {
             const ydRegis = await fetchAsia77Regis(
               brand.key, brand.domain, ydDDMMYYYY, brand.userId, brand.cookieHeader
             );
-            upsertSnapshot(brand.key, yesterdayStr, 24, ydTrx, ydRegis, tid);
+            await upsertSnapshot(brand.key, yesterdayStr, 24, ydTrx, ydRegis, tid);
             saved.push(`FINISH ${yesterdayStr}: TRX=${fmtNum(ydTrx)} REGIS=${fmtNum(ydRegis)}`);
           }
 
