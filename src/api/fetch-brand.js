@@ -86,7 +86,7 @@ export async function fetchAllBrands(dateStr, hour, tenantId = null) {
 
   // Kirim alert ke Telegram jika ada error
   if (errors.length > 0) {
-    sendFetchErrorAlert(errors, hour).catch(e => logger.error({ err: e.message }, 'Alert send failed'));
+    sendFetchErrorAlert(errors, hour, tenantId).catch(e => logger.error({ err: e.message }, 'Alert send failed'));
   }
 }
 

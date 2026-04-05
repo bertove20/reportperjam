@@ -40,7 +40,7 @@ export async function sendTimReports(currentHour, todayDate, yesterdayDate, bran
       const hourLabel = currentHour === 0 ? 'FINISH' : `${String(currentHour).padStart(2, '0')}:00`;
       const caption = `📊 ${brand.name} │ ${hourLabel} WIB │ ${todayDate}`;
 
-      await sendPhoto(groupId, png, caption);
+      await sendPhoto(groupId, png, caption, tenantId);
       successCount++;
 
       const duration = Date.now() - start;

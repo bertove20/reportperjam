@@ -56,7 +56,7 @@ export default async function settingsRoutes(app) {
     if (!groupId) return reply.code(400).send({ error: 'Telegram group not configured for this module' });
 
     try {
-      const result = await sendTestMessage(groupId);
+      const result = await sendTestMessage(groupId, undefined, tid);
       if (result.ok) return { success: true, message: `Test message sent (${module})` };
       return reply.code(500).send({ success: false, error: result.description });
     } catch (err) {

@@ -7,15 +7,15 @@
 import { getSetting } from '../storage/settings-store.js';
 import { logger } from '../logger.js';
 
-async function getBotToken() {
-  return await getSetting('tg_bot_token', 'report') || process.env.TG_BOT_TOKEN;
+async function getBotToken(tenantId = null) {
+  return await getSetting('tg_bot_token', 'report', tenantId) || process.env.TG_BOT_TOKEN;
 }
 
 /**
  * Kirim foto ke Telegram group
  */
-export async function sendPhoto(chatId, pngBuffer, caption = '') {
-  const token = await getBotToken();
+export async function sendPhoto(chatId, pngBuffer, caption = '', tenantId = null) {
+  const token = await getBotToken(tenantId);
   if (!token) throw new Error('TG_BOT_TOKEN not configured');
 
   const url = `https://api.telegram.org/bot${token}/sendPhoto`;
@@ -47,8 +47,8 @@ export async function sendPhoto(chatId, pngBuffer, caption = '') {
 /**
  * Test Telegram connection — kirim pesan teks
  */
-export async function sendTestMessage(chatId, text = '✅ Test connection berhasil!') {
-  const token = await getBotToken();
+export async function sendTestMessage(chatId, text = '✅ Test connection berhasil!', tenantId = null) {
+  const token = await getBotToken(tenantId);
   if (!token) throw new Error('TG_BOT_TOKEN not configured');
 
   const url = `https://api.telegram.org/bot${token}/sendMessage`;

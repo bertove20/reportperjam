@@ -8,9 +8,9 @@ import { logger } from '../logger.js';
 /**
  * Kirim alert text ke Telegram group
  */
-export async function sendAlert(message) {
-  const token = await getSetting('tg_bot_token', 'report') || process.env.TG_BOT_TOKEN;
-  const groupId = await getSetting('tg_report_group', 'report') || process.env.TG_REPORT_GROUP;
+export async function sendAlert(message, tenantId = null) {
+  const token = await getSetting('tg_bot_token', 'report', tenantId) || process.env.TG_BOT_TOKEN;
+  const groupId = await getSetting('tg_report_group', 'report', tenantId) || process.env.TG_REPORT_GROUP;
 
   if (!token || !groupId) {
     logger.warn('Alert: TG not configured, skipping');
@@ -41,7 +41,7 @@ export async function sendAlert(message) {
  * Kirim alert untuk brand-brand yang error
  * @param {Array} errors - [{brand, error}]
  */
-export async function sendFetchErrorAlert(errors, hour) {
+export async function sendFetchErrorAlert(errors, hour, tenantId = null) {
   if (errors.length === 0) return;
 
   const lines = [
@@ -56,7 +56,7 @@ export async function sendFetchErrorAlert(errors, hour) {
     `• Terminal: <code>node --env-file=.env scripts/login-brand.js</code>`,
   ];
 
-  await sendAlert(lines.join('\n'));
+  await sendAlert(lines.join('\n'), tenantId);
 }
 
 function escapeHtml(text) {
