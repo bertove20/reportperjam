@@ -8,6 +8,7 @@ import {
   createReferralCode,
   updateReferralCode,
   deleteReferralCode,
+  getReferralMonthlyBreakdown,
 } from '../storage/referral-store.js';
 
 export default async function referralRoutes(app) {
@@ -47,6 +48,18 @@ export default async function referralRoutes(app) {
     if (!existing) return reply.code(404).send({ error: 'Referral code not found' });
     const updated = await updateReferralCode(id, tid, request.body || {});
     return updated;
+  });
+
+  // GET /api/referrals/dashboard?division_id=X&date=YYYY-MM-DD
+  // Returns monthly breakdown (one entry per brand+referral) for dashboard view.
+  app.get('/api/referrals/dashboard', async (request, reply) => {
+    const tid = request.tenantId;
+    const { division_id, date } = request.query;
+    if (!division_id) return reply.code(400).send({ error: 'division_id is required' });
+
+    const targetDate = date || new Date().toISOString().slice(0, 10);
+    const data = await getReferralMonthlyBreakdown(tid, parseInt(division_id), targetDate);
+    return { division_id: parseInt(division_id), target_date: targetDate, items: data };
   });
 
   // DELETE /api/referrals/:id

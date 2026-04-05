@@ -20,6 +20,7 @@ const SIDEBAR_GROUPS = [
       { to: '/report/hourly', label: 'Hourly Report' },
       { to: '/report/history', label: 'History' },
       { to: '/report/comparison', label: 'Comparison' },
+      { to: '/report/referrals-dashboard', label: 'Referral Dashboard' },
       { to: '/report/referrals', label: 'Referrals' },
       { to: '/admin/divisions', label: 'Divisions', role: 'superadmin' },
       { to: '/report/settings', label: 'Settings', role: 'superadmin' },

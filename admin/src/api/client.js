@@ -77,6 +77,7 @@ export const referrals = {
   create: (data) => request('/referrals', { method: 'POST', body: data }),
   update: (id, data) => request(`/referrals/${id}`, { method: 'PUT', body: data }),
   delete: (id) => request(`/referrals/${id}`, { method: 'DELETE' }),
+  dashboard: (divisionId, date) => request(`/referrals/dashboard?division_id=${divisionId}&date=${date}`),
 }
 
 // Settings (module-scoped)
