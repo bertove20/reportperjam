@@ -139,15 +139,6 @@ export function buildReferralReportHtml({ divisionName, date, monthly = [] }) {
     color: #111827;
     letter-spacing: 2px;
     padding: 0 20px;
-    line-height: 1;
-  }
-  .brand-subname {
-    font-size: 14px;
-    font-weight: 600;
-    color: #374151;
-    letter-spacing: 1px;
-    margin-top: 4px;
-    text-transform: uppercase;
   }
 
   /* Month table */
@@ -390,10 +381,7 @@ function buildReferralCard(item, todayDay) {
         <div class="suntik-badge">SUNTIK TRAFFIC</div>
         <div class="ref-badge">ID REFF : ${escapeHtml(referral_code)}</div>
       </div>
-      <div class="brand-name">
-        ${escapeHtml(display_name || brand_name)}
-        ${display_name && display_name !== brand_name ? `<div class="brand-subname">${escapeHtml(brand_name)}</div>` : ''}
-      </div>
+      <div class="brand-name">${escapeHtml(brand_name)}</div>
       <div style="width:40px"></div>
     </div>
     <table class="month-table">

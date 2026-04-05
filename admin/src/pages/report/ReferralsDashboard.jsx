@@ -26,9 +26,7 @@ export default function ReferralsDashboard() {
   const items = dashData?.items || []
   const todayDay = parseInt(date.split('-')[2])
 
-  // Group items by brand. primaryLabel = display_name dari referral (yang user isi
-  // saat Add Referral). Kalau brand punya >1 referral dengan display_name berbeda,
-  // gabungkan dengan " / ". Fallback ke brand_name kalau semua kosong.
+  // Group items by brand
   const brandGroups = useMemo(() => {
     const map = new Map()
     for (const it of items) {
@@ -42,12 +40,7 @@ export default function ReferralsDashboard() {
       }
       map.get(it.brand_key).referrals.push(it)
     }
-    const groups = Array.from(map.values())
-    for (const g of groups) {
-      const labels = [...new Set(g.referrals.map(r => r.display_name).filter(Boolean))]
-      g.primaryLabel = labels.length > 0 ? labels.join(' / ') : g.brand_name
-    }
-    return groups
+    return Array.from(map.values())
   }, [items])
 
   return (
@@ -116,16 +109,14 @@ function BrandGroup({ group, todayDay }) {
 
   return (
     <div className="bg-white rounded-lg border overflow-hidden">
-      {/* Brand group header — use display_name from referral setting as main label */}
+      {/* Brand group header */}
       <div className="flex items-center justify-between px-5 py-3 text-white" style={{ background: group.brand_color || '#7c3aed' }}>
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="text-xl font-black tracking-wide truncate">
-            {group.primaryLabel}
-          </div>
-          <div className="text-xs opacity-75 font-mono whitespace-nowrap">{group.brand_name} · {group.brand_key}</div>
-          <div className="text-xs bg-white/20 rounded px-2 py-0.5 whitespace-nowrap">{group.referrals.length} referral</div>
+        <div className="flex items-center gap-3">
+          <div className="text-xl font-black tracking-wide">{group.brand_name}</div>
+          <div className="text-xs opacity-80 font-mono">{group.brand_key}</div>
+          <div className="text-xs bg-white/20 rounded px-2 py-0.5">{group.referrals.length} referral</div>
         </div>
-        <div className="flex gap-5 text-sm whitespace-nowrap">
+        <div className="flex gap-5 text-sm">
           <div><span className="opacity-75">New:</span> <b>{brandTotals.totalNew}</b></div>
           <div><span className="opacity-75">Depo:</span> <b>{brandTotals.totalDepo}</b></div>
           <div><span className="opacity-75">Avg/hari:</span> <b>{brandTotals.avgNew} & {brandTotals.avgDepo}</b></div>
