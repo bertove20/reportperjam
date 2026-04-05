@@ -26,13 +26,19 @@ function escapeHtml(s) {
   }[c]));
 }
 
+function formatShortDate(dateStr) {
+  const [, m, d] = dateStr.split('-');
+  return `${d}/${m}`;
+}
+
 /**
  * @param {Object} data
  * @param {string} data.divisionName
  * @param {string} data.date — YYYY-MM-DD
  * @param {Array} data.brands — [{ brand_key, brand_name, brand_color, referrals: [{referral_code, display_name, new_regis, depo_regis}] }]
+ * @param {Array} [data.trend] — [{ date, new_regis, depo_regis }, ...] untuk 30 hari terakhir
  */
-export function buildReferralReportHtml({ divisionName, date, brands }) {
+export function buildReferralReportHtml({ divisionName, date, brands, trend = [] }) {
   const dateFormatted = formatDate(date);
 
   let grandNew = 0;
@@ -91,6 +97,66 @@ export function buildReferralReportHtml({ divisionName, date, brands }) {
   }).join('');
 
   const grandRatio = grandNew > 0 ? ((grandDepo / grandNew) * 100).toFixed(1) + '%' : '—';
+
+  // Build 30-day trend: bar chart + table
+  let trendSection = '';
+  if (trend && trend.length > 0) {
+    const maxVal = Math.max(1, ...trend.map(t => Math.max(t.new_regis || 0, t.depo_regis || 0)));
+    const chartBars = trend.map(t => {
+      const newH = Math.round(((t.new_regis || 0) / maxVal) * 100);
+      const depoH = Math.round(((t.depo_regis || 0) / maxVal) * 100);
+      const isToday = t.date === date;
+      return `
+        <div class="bar-col${isToday ? ' bar-today' : ''}">
+          <div class="bar-stack">
+            <div class="bar bar-new" style="height:${newH}%" title="New: ${fmt(t.new_regis)}"></div>
+            <div class="bar bar-depo" style="height:${depoH}%" title="Depo: ${fmt(t.depo_regis)}"></div>
+          </div>
+          <div class="bar-label">${formatShortDate(t.date)}</div>
+        </div>`;
+    }).join('');
+
+    // Trend stats
+    const trendNewTotal = trend.reduce((a, t) => a + (t.new_regis || 0), 0);
+    const trendDepoTotal = trend.reduce((a, t) => a + (t.depo_regis || 0), 0);
+    const trendAvgNew = (trendNewTotal / trend.length).toFixed(1);
+    const trendAvgDepo = (trendDepoTotal / trend.length).toFixed(1);
+    const trendRatio = trendNewTotal > 0 ? ((trendDepoTotal / trendNewTotal) * 100).toFixed(1) + '%' : '—';
+
+    trendSection = `
+      <div class="trend-section">
+        <div class="trend-header">
+          <div class="trend-title">Perkembangan ${trend.length} Hari Terakhir</div>
+          <div class="trend-legend">
+            <span class="legend-item"><span class="legend-box legend-new"></span>New Regis</span>
+            <span class="legend-item"><span class="legend-box legend-depo"></span>Depo Regis</span>
+          </div>
+        </div>
+        <div class="trend-chart">${chartBars}</div>
+        <div class="trend-stats">
+          <div class="trend-stat">
+            <div class="trend-stat-label">Total ${trend.length}D New</div>
+            <div class="trend-stat-value">${fmt(trendNewTotal)}</div>
+          </div>
+          <div class="trend-stat">
+            <div class="trend-stat-label">Total ${trend.length}D Depo</div>
+            <div class="trend-stat-value">${fmt(trendDepoTotal)}</div>
+          </div>
+          <div class="trend-stat">
+            <div class="trend-stat-label">Avg/Hari New</div>
+            <div class="trend-stat-value">${trendAvgNew}</div>
+          </div>
+          <div class="trend-stat">
+            <div class="trend-stat-label">Avg/Hari Depo</div>
+            <div class="trend-stat-value">${trendAvgDepo}</div>
+          </div>
+          <div class="trend-stat">
+            <div class="trend-stat-label">Depo %</div>
+            <div class="trend-stat-value">${trendRatio}</div>
+          </div>
+        </div>
+      </div>`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="id">
@@ -204,6 +270,107 @@ export function buildReferralReportHtml({ divisionName, date, brands }) {
     color: #9ca3af;
     text-align: center;
   }
+  .trend-section {
+    padding: 20px 28px;
+    background: #fafbfc;
+    border-top: 1px solid #e5e7eb;
+  }
+  .trend-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .trend-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #111827;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .trend-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: #6b7280;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-box {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+  .legend-new { background: #3b82f6; }
+  .legend-depo { background: #10b981; }
+  .trend-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 140px;
+    padding: 8px 0;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 12px;
+  }
+  .bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+  }
+  .bar-stack {
+    width: 100%;
+    height: 110px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+  }
+  .bar {
+    width: 45%;
+    min-height: 1px;
+    border-radius: 2px 2px 0 0;
+  }
+  .bar-new { background: #3b82f6; }
+  .bar-depo { background: #10b981; }
+  .bar-today .bar-new { background: #1e40af; box-shadow: 0 -2px 4px rgba(30,64,175,0.4); }
+  .bar-today .bar-depo { background: #047857; box-shadow: 0 -2px 4px rgba(4,120,87,0.4); }
+  .bar-label {
+    font-size: 8px;
+    color: #9ca3af;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar-today .bar-label {
+    color: #1e40af;
+    font-weight: 700;
+  }
+  .trend-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .trend-stat {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 10px;
+    text-align: center;
+  }
+  .trend-stat-label {
+    font-size: 9px;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .trend-stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #111827;
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 </head>
 <body>
@@ -214,6 +381,7 @@ export function buildReferralReportHtml({ divisionName, date, brands }) {
       <div class="report-date">${dateFormatted}</div>
     </div>
     ${brandSections}
+    ${trendSection}
     <div class="grand-total">
       <div class="grand-label">Total Divisi</div>
       <div class="grand-stats">

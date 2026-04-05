@@ -68,6 +68,45 @@ export async function deleteReferralCode(id, tenantId) {
 }
 
 /**
+ * Upsert daily snapshot (used after each report cycle to keep history)
+ */
+export async function upsertReferralDailySnapshot(tenantId, divisionId, brandKey, referralCode, date, newRegis, depoRegis) {
+  await query(`
+    INSERT INTO referral_daily_snapshots
+      (tenant_id, division_id, brand_key, referral_code, date, new_regis, depo_regis, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+    ON CONFLICT (tenant_id, division_id, brand_key, referral_code, date)
+    DO UPDATE SET
+      new_regis = EXCLUDED.new_regis,
+      depo_regis = EXCLUDED.depo_regis,
+      updated_at = NOW()
+  `, [tenantId, divisionId, brandKey, referralCode, date, newRegis, depoRegis]);
+}
+
+/**
+ * Get 30-day trend for a division — one row per date with totals across
+ * all brands and referrals in that division.
+ * Returns: [{ date, new_regis, depo_regis }, ...] sorted by date ASC
+ */
+export async function getDivisionTrend(tenantId, divisionId, endDate, days = 30) {
+  // Get start date = endDate - (days-1)
+  const end = new Date(endDate + 'T00:00:00Z');
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  const startStr = start.toISOString().slice(0, 10);
+
+  return queryRows(`
+    SELECT date,
+           SUM(new_regis)::int AS new_regis,
+           SUM(depo_regis)::int AS depo_regis
+    FROM referral_daily_snapshots
+    WHERE tenant_id = $1 AND division_id = $2 AND date >= $3 AND date <= $4
+    GROUP BY date
+    ORDER BY date ASC
+  `, [tenantId, divisionId, startStr, endDate]);
+}
+
+/**
  * Get all referral codes grouped by division for daily report cycle
  * Returns: [{ division_id, division_name, tg_group_id, codes: [{brand_key, referral_code, display_name}, ...] }, ...]
  */

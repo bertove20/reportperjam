@@ -10,7 +10,11 @@
  */
 
 import { getBrands } from './brand-configs.js';
-import { getReferralsGroupedByDivision } from '../storage/referral-store.js';
+import {
+  getReferralsGroupedByDivision,
+  upsertReferralDailySnapshot,
+  getDivisionTrend,
+} from '../storage/referral-store.js';
 import { fetchMembersFiltered } from '../api/asia77-engine.js';
 import { buildReferralReportHtml } from './referral-report-html.js';
 import { renderPng } from './tim-renderer.js';
@@ -119,14 +123,36 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
           if (refMap.has(key)) refMap.get(key).depo_regis++;
         }
 
+        const refRows = Array.from(refMap.values());
+
+        // Persist snapshot untuk history 30 hari
+        for (const r of refRows) {
+          try {
+            await upsertReferralDailySnapshot(
+              tenantId, div.division_id, brand.key, r.referral_code, targetDate,
+              r.new_regis, r.depo_regis
+            );
+          } catch (err) {
+            logger.warn({ err: err.message, brand: brand.key, ref: r.referral_code }, 'Snapshot upsert failed');
+          }
+        }
+
         brandReports.push({
           brand_key: brand.key,
           brand_name: brand.name,
           brand_color: brand.primary,
-          referrals: Array.from(refMap.values()),
+          referrals: refRows,
         });
 
         await new Promise(r => setTimeout(r, DELAY_BETWEEN_BRANDS));
+      }
+
+      // Ambil trend 30 hari untuk divisi ini (termasuk hari ini yang baru di-upsert)
+      let trend = [];
+      try {
+        trend = await getDivisionTrend(tenantId, div.division_id, targetDate, 30);
+      } catch (err) {
+        logger.warn({ err: err.message, division: div.division_name }, 'Get trend failed');
       }
 
       // Render + send
@@ -134,6 +160,7 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
         divisionName: div.division_name,
         date: targetDate,
         brands: brandReports,
+        trend,
       });
       const png = await renderPng(html);
       const caption = `📋 Referral Report │ ${div.division_name} │ ${targetDate}`;

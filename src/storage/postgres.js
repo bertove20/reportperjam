@@ -444,6 +444,24 @@ async function migrateToMultiTenant() {
   await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_referral_codes ON referral_codes(tenant_id, brand_key, referral_code)').catch(() => {});
   await query('CREATE INDEX IF NOT EXISTS idx_referral_codes_division ON referral_codes(division_id)').catch(() => {});
 
+  // Referral daily snapshots — store fetch results per day for 30-day trend
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS referral_daily_snapshots (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      division_id INTEGER REFERENCES divisions(id) ON DELETE CASCADE,
+      brand_key TEXT NOT NULL,
+      referral_code TEXT NOT NULL,
+      date TEXT NOT NULL,
+      new_regis INTEGER DEFAULT 0,
+      depo_regis INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `).catch(() => {});
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_ref_daily_snap ON referral_daily_snapshots(tenant_id, division_id, brand_key, referral_code, date)').catch(() => {});
+  await query('CREATE INDEX IF NOT EXISTS idx_ref_daily_date ON referral_daily_snapshots(tenant_id, division_id, date)').catch(() => {});
+
   for (const sql of alterations) {
     await query(sql).catch(() => {});
   }
