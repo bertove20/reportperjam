@@ -144,33 +144,32 @@ export function buildReferralReportHtml({ divisionName, date, monthly = [] }) {
   /* Month table */
   .month-table {
     border-collapse: collapse;
-    font-size: 11px;
+    font-size: 12px;
     font-family: 'Segoe UI', Arial, sans-serif;
     table-layout: fixed;
-    margin: 0 auto;
+    width: 100%;
   }
   .month-table th, .month-table td {
     border: 1px solid #111827;
-    padding: 5px 2px;
+    padding: 6px 2px;
     text-align: center;
     font-variant-numeric: tabular-nums;
-    width: 38px;
   }
   .month-table .row-label {
     background: #86efac;
     color: #064e3b;
     font-weight: 800;
     text-align: left;
-    padding: 5px 10px;
-    width: 120px;
-    font-size: 11px;
+    padding: 6px 12px;
+    width: 130px;
+    font-size: 12px;
   }
   .month-table .col-total {
     background: #fcd34d !important;
     color: #78350f !important;
     font-weight: 800 !important;
-    width: 70px;
-    font-size: 12px;
+    width: 85px;
+    font-size: 13px;
   }
   .month-table .row-tanggal .row-label { background: #86efac; }
   .month-table .row-regis .row-label { background: #fecaca; }
