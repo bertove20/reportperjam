@@ -15,14 +15,17 @@ const SIDEBAR_GROUPS = [
     borderColor: 'border-blue-500/30',
     defaultOpen: true,
     items: [
+      { type: 'section', label: 'Laporan Brand' },
       { to: '/report', label: 'Dashboard', end: true },
       { to: '/report/brands', label: 'Brands' },
       { to: '/report/hourly', label: 'Hourly Report' },
       { to: '/report/history', label: 'History' },
       { to: '/report/comparison', label: 'Comparison' },
+      { type: 'section', label: 'Laporan Referral' },
       { to: '/report/referrals-dashboard', label: 'Referral Dashboard' },
-      { to: '/report/referrals', label: 'Referrals' },
+      { to: '/report/referrals', label: 'Referrals Setting' },
       { to: '/admin/divisions', label: 'Divisions', role: 'superadmin' },
+      { type: 'section', label: 'Sistem' },
       { to: '/report/settings', label: 'Settings', role: 'superadmin' },
       { to: '/report/logs', label: 'Logs' },
     ],
@@ -148,22 +151,31 @@ export default function Layout() {
 
               {!collapsed[group.label] && (
                 <div className="py-0.5">
-                  {group.items.filter(canSeeItem).map(item => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.end}
-                      onClick={() => setSidebarOpen(false)}
-                      className={({ isActive }) =>
-                        `block pl-7 pr-3 py-1.5 text-[11px] transition-colors border-l-2 ${
-                          isActive
-                            ? `${group.bgActive} ${group.textActive} font-semibold ${group.borderColor}`
-                            : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border-transparent'
-                        }`
-                      }
-                    >
-                      {item.label}
-                    </NavLink>
+                  {group.items.filter(canSeeItem).map((item, idx) => (
+                    item.type === 'section' ? (
+                      <div
+                        key={`sec-${idx}-${item.label}`}
+                        className="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-wider text-gray-600"
+                      >
+                        {item.label}
+                      </div>
+                    ) : (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        onClick={() => setSidebarOpen(false)}
+                        className={({ isActive }) =>
+                          `block pl-7 pr-3 py-1.5 text-[11px] transition-colors border-l-2 ${
+                            isActive
+                              ? `${group.bgActive} ${group.textActive} font-semibold ${group.borderColor}`
+                              : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border-transparent'
+                          }`
+                        }
+                      >
+                        {item.label}
+                      </NavLink>
+                    )
                   ))}
                 </div>
               )}
