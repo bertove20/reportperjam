@@ -32,6 +32,16 @@ export default function BrandList() {
     alert(`Fetch started for ${key}`)
   }
 
+  const handleSendReport = async (key, name) => {
+    if (!confirm(`Kirim report Telegram untuk ${name} sekarang?`)) return
+    try {
+      await actions.reportNow(key)
+      alert(`Report terkirim untuk ${name}. Cek grup Telegram.`)
+    } catch (err) {
+      alert(`Send report gagal: ${err.message}`)
+    }
+  }
+
   const handleLogin = async (key, name) => {
     alert(`Browser akan terbuka untuk login ${name}.\n\nLogin manual di browser, setelah masuk dashboard tunggu cookie otomatis tercapture.`)
     try {
@@ -100,6 +110,9 @@ export default function BrandList() {
                     </button>
                     <button onClick={() => handleFetch(brand.key)} className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
                       Fetch
+                    </button>
+                    <button onClick={() => handleSendReport(brand.key, brand.name)} className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200">
+                      Send Report
                     </button>
                     <Link to={`/report/brands/${brand.key}/edit`} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
                       Edit
