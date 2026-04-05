@@ -17,6 +17,7 @@ const ReportSettings = lazy(() => import('./pages/report/Settings'))
 const ReportLogs = lazy(() => import('./pages/report/Logs'))
 const ReportReferrals = lazy(() => import('./pages/report/Referrals'))
 const ReportReferralsDashboard = lazy(() => import('./pages/report/ReferralsDashboard'))
+const ReportReferralLogs = lazy(() => import('./pages/report/ReferralLogs'))
 
 // Finance Module
 const FinanceDashboard = lazy(() => import('./pages/finance/Dashboard'))
@@ -86,6 +87,7 @@ export default function App() {
               <Route path="logs" element={<ReportLogs />} />
               <Route path="referrals" element={<ReportReferrals />} />
               <Route path="referrals-dashboard" element={<ReportReferralsDashboard />} />
+              <Route path="referral-logs" element={<ReportReferralLogs />} />
             </Route>
 
             {/* Finance */}

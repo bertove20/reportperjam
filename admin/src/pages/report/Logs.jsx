@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { monitoring, brands as brandsApi } from '../../api/client'
 
+const EXCLUDED_TYPES = 'referral-report,referral-backfill'
+
 export default function Logs() {
-  const [filters, setFilters] = useState({ type: '', brand: '', status: '', limit: '50', offset: '0' })
+  const [filters, setFilters] = useState({ type: '', typeNotIn: EXCLUDED_TYPES, brand: '', status: '', limit: '50', offset: '0' })
   const [tab, setTab] = useState('logs') // 'logs' or 'summary'
 
   const { data: brandList = [] } = useQuery({

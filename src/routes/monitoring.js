@@ -54,9 +54,9 @@ export default async function monitoringRoutes(app) {
 
   app.get('/api/logs', async (request) => {
     const tid = request.tenantId;
-    const { type, brand, status, limit, offset } = request.query;
+    const { type, typeNotIn, brand, status, limit, offset } = request.query;
     return queryLogs({
-      type, brand, status,
+      type, typeNotIn, brand, status,
       limit: parseInt(limit) || 50,
       offset: parseInt(offset) || 0,
       tenantId: tid,

@@ -25,6 +25,7 @@ const SIDEBAR_GROUPS = [
       { to: '/report/referrals-dashboard', label: 'Referral Dashboard' },
       { to: '/report/referrals', label: 'Referrals Setting' },
       { to: '/admin/divisions', label: 'Divisions', role: 'superadmin' },
+      { to: '/report/referral-logs', label: 'Referral Logs' },
       { type: 'section', label: 'Sistem' },
       { to: '/report/settings', label: 'Settings', role: 'superadmin' },
       { to: '/report/logs', label: 'Logs' },

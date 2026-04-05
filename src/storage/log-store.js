@@ -11,12 +11,31 @@ export async function insertLog(jobType, brandKey, status, message = null, durat
   `, [jobType, brandKey, status, message, durationMs, tenantId || 1]);
 }
 
-export async function queryLogs({ type, brand, status, limit = 50, offset = 0, tenantId = null } = {}) {
+export async function queryLogs({ type, typeNotIn, brand, status, limit = 50, offset = 0, tenantId = null } = {}) {
   const conditions = ['tenant_id = $1'];
   const params = [tenantId || 1];
   let idx = 2;
 
-  if (type) { conditions.push(`job_type = $${idx++}`); params.push(type); }
+  // type can be a single value, or comma-separated for IN
+  if (type) {
+    const types = String(type).split(',').map(t => t.trim()).filter(Boolean);
+    if (types.length === 1) {
+      conditions.push(`job_type = $${idx++}`);
+      params.push(types[0]);
+    } else {
+      const placeholders = types.map(() => `$${idx++}`).join(', ');
+      conditions.push(`job_type IN (${placeholders})`);
+      params.push(...types);
+    }
+  }
+  if (typeNotIn) {
+    const types = String(typeNotIn).split(',').map(t => t.trim()).filter(Boolean);
+    if (types.length > 0) {
+      const placeholders = types.map(() => `$${idx++}`).join(', ');
+      conditions.push(`job_type NOT IN (${placeholders})`);
+      params.push(...types);
+    }
+  }
   if (brand) { conditions.push(`brand_key = $${idx++}`); params.push(brand); }
   if (status) { conditions.push(`status = $${idx++}`); params.push(status); }
 
