@@ -107,6 +107,77 @@ export async function getDivisionTrend(tenantId, divisionId, endDate, days = 30)
 }
 
 /**
+ * Get monthly breakdown for a division — for each (brand, referral) in the division,
+ * return day-by-day new_regis + depo_regis for the month containing targetDate.
+ *
+ * Returns: [
+ *   { brand_key, brand_name, brand_color, referral_code, display_name,
+ *     days: [{day, new_regis, depo_regis}, ... entire month] },
+ *   ...
+ * ]
+ */
+export async function getReferralMonthlyBreakdown(tenantId, divisionId, targetDate) {
+  const [y, m] = targetDate.split('-');
+  const year = parseInt(y);
+  const month = parseInt(m);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const monthStart = `${y}-${m}-01`;
+  const monthEnd = `${y}-${m}-${String(daysInMonth).padStart(2, '0')}`;
+
+  // All active referrals for this division with brand metadata
+  const refs = await queryRows(`
+    SELECT rc.brand_key, rc.referral_code, rc.display_name,
+           b.name AS brand_name, b.primary_color AS brand_color
+    FROM referral_codes rc
+    LEFT JOIN report_brands b ON b.key = rc.brand_key AND b.tenant_id = rc.tenant_id
+    WHERE rc.tenant_id = $1 AND rc.division_id = $2 AND rc.is_active = 1
+    ORDER BY rc.brand_key, rc.referral_code
+  `, [tenantId, divisionId]);
+
+  // Snapshot rows for the month
+  const snaps = await queryRows(`
+    SELECT brand_key, referral_code, date, new_regis, depo_regis
+    FROM referral_daily_snapshots
+    WHERE tenant_id = $1 AND division_id = $2 AND date >= $3 AND date <= $4
+  `, [tenantId, divisionId, monthStart, monthEnd]);
+
+  // Index snapshots by (brand_key|referral_code|day)
+  const snapIdx = new Map();
+  for (const s of snaps) {
+    const day = parseInt(s.date.split('-')[2]);
+    snapIdx.set(`${s.brand_key}|${s.referral_code}|${day}`, {
+      new_regis: s.new_regis || 0,
+      depo_regis: s.depo_regis || 0,
+    });
+  }
+
+  // Build result: one entry per (brand, referral) with full month days array
+  return refs.map(r => {
+    const days = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const k = `${r.brand_key}|${r.referral_code}|${day}`;
+      const s = snapIdx.get(k);
+      days.push({
+        day,
+        new_regis: s?.new_regis || 0,
+        depo_regis: s?.depo_regis || 0,
+      });
+    }
+    return {
+      brand_key: r.brand_key,
+      brand_name: r.brand_name || r.brand_key,
+      brand_color: r.brand_color || '#7c3aed',
+      referral_code: r.referral_code,
+      display_name: r.display_name || r.referral_code,
+      days,
+      year,
+      month,
+      daysInMonth,
+    };
+  });
+}
+
+/**
  * Get all referral codes grouped by division for daily report cycle
  * Returns: [{ division_id, division_name, tg_group_id, codes: [{brand_key, referral_code, display_name}, ...] }, ...]
  */

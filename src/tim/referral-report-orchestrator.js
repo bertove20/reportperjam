@@ -13,7 +13,7 @@ import { getBrands } from './brand-configs.js';
 import {
   getReferralsGroupedByDivision,
   upsertReferralDailySnapshot,
-  getDivisionTrend,
+  getReferralMonthlyBreakdown,
 } from '../storage/referral-store.js';
 import { fetchMembersFiltered } from '../api/asia77-engine.js';
 import { buildReferralReportHtml } from './referral-report-html.js';
@@ -147,22 +147,21 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
         await new Promise(r => setTimeout(r, DELAY_BETWEEN_BRANDS));
       }
 
-      // Ambil trend 30 hari untuk divisi ini (termasuk hari ini yang baru di-upsert)
-      let trend = [];
+      // Ambil breakdown bulanan per (brand, referral) untuk divisi ini
+      let monthly = [];
       try {
-        trend = await getDivisionTrend(tenantId, div.division_id, targetDate, 30);
+        monthly = await getReferralMonthlyBreakdown(tenantId, div.division_id, targetDate);
       } catch (err) {
-        logger.warn({ err: err.message, division: div.division_name }, 'Get trend failed');
+        logger.warn({ err: err.message, division: div.division_name }, 'Get monthly breakdown failed');
       }
 
       // Render + send
       const html = buildReferralReportHtml({
         divisionName: div.division_name,
         date: targetDate,
-        brands: brandReports,
-        trend,
+        monthly,
       });
-      const png = await renderPng(html);
+      const png = await renderPng(html, { width: 1720 });
       const caption = `📋 Referral Report │ ${div.division_name} │ ${targetDate}`;
 
       await sendPhoto(div.tg_group_id, png, caption, tenantId);
