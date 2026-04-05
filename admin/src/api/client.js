@@ -205,6 +205,7 @@ export const actions = {
   fetchNow: (brandKey) => request('/actions/fetch-now', { method: 'POST', body: { brandKey } }),
   reportNow: (brandKey) => request('/actions/report-now', { method: 'POST', body: { brandKey } }),
   referralReportNow: (date, divisionId) => request('/actions/referral-report-now', { method: 'POST', body: { date, divisionId } }),
+  referralBackfill: (startDate, endDate, divisionId) => request('/actions/referral-backfill', { method: 'POST', body: { startDate, endDate, divisionId } }),
   fetchFinish: (date) => request('/actions/fetch-finish', { method: 'POST', body: { date } }),
   backfill: (date, brandKey) => request('/actions/backfill', { method: 'POST', body: { date, brandKey } }),
   missingHours: (brand, date) => request(`/actions/missing-hours?brand=${brand}&date=${date}`),

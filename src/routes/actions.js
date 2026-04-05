@@ -10,7 +10,7 @@
 import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
 import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia77DepositHistory } from '../api/asia77-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
-import { sendReferralReports } from '../tim/referral-report-orchestrator.js';
+import { sendReferralReports, backfillReferralSnapshots } from '../tim/referral-report-orchestrator.js';
 import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
@@ -81,6 +81,24 @@ export default async function actionRoutes(app) {
     });
 
     return { success: true, message: `Referral report started for ${targetDate}` };
+  });
+
+  // POST /api/actions/referral-backfill
+  // body: { startDate, endDate, divisionId? }
+  // Iterate date range, fetch members per day, upsert snapshots — no Telegram send.
+  app.post('/api/actions/referral-backfill', async (request, reply) => {
+    const tid = request.tenantId;
+    const { startDate, endDate, divisionId } = request.body || {};
+    if (!startDate || !endDate) {
+      return reply.code(400).send({ error: 'startDate and endDate are required (YYYY-MM-DD)' });
+    }
+
+    logger.info({ tenantId: tid, startDate, endDate, divisionId }, 'Referral backfill triggered');
+    backfillReferralSnapshots(startDate, endDate, tid, divisionId || null).catch(err => {
+      logger.error({ err: err.message }, 'Referral backfill failed');
+    });
+
+    return { success: true, message: `Backfill started for ${startDate} to ${endDate}` };
   });
 
   // POST /api/actions/backfill

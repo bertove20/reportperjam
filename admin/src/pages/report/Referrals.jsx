@@ -14,6 +14,16 @@ export default function Referrals() {
     return d.toISOString().slice(0, 10)
   })
   const [sendDivision, setSendDivision] = useState('')
+  const [backfillStart, setBackfillStart] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 7)
+    return d.toISOString().slice(0, 10)
+  })
+  const [backfillEnd, setBackfillEnd] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 1)
+    return d.toISOString().slice(0, 10)
+  })
+  const [backfillDivision, setBackfillDivision] = useState('')
+  const [backfillStatus, setBackfillStatus] = useState('')
 
   const { data: rows = [] } = useQuery({ queryKey: ['referrals'], queryFn: () => referralsApi.list() })
   const { data: brandList = [] } = useQuery({ queryKey: ['brands-all'], queryFn: () => brandsApi.list(false) })
@@ -68,6 +78,20 @@ export default function Referrals() {
     }
   }
 
+  const handleBackfill = async () => {
+    if (!backfillStart || !backfillEnd) { alert('Isi tanggal mulai dan akhir'); return }
+    if (backfillStart > backfillEnd) { alert('Tanggal mulai harus <= tanggal akhir'); return }
+    if (!confirm(`Backfill snapshot referral dari ${backfillStart} sampai ${backfillEnd}?\n\nProses jalan di background, tidak kirim ke Telegram. Cek halaman Logs (referral-backfill) untuk progress.`)) return
+    setBackfillStatus('Sedang memulai...')
+    try {
+      await actions.referralBackfill(backfillStart, backfillEnd, backfillDivision || null)
+      setBackfillStatus('Backfill dimulai. Proses berjalan di background — cek Logs untuk status.')
+      setTimeout(() => setBackfillStatus(''), 8000)
+    } catch (err) {
+      setBackfillStatus(`Gagal: ${err.message}`)
+    }
+  }
+
   const columns = [
     { key: 'brand_key', label: 'Brand', render: r => <span className="font-mono text-xs">{r.brand_key}</span> },
     { key: 'referral_code', label: 'Referral Code', render: r => <span className="font-mono font-medium">{r.referral_code}</span> },
@@ -119,6 +143,40 @@ export default function Referrals() {
         <p className="text-xs text-gray-500 mt-2">
           Report otomatis terkirim setiap hari jam 00:05 WIB. Gunakan tombol di atas untuk test / kirim ulang manual.
         </p>
+      </div>
+
+      <div className="bg-white rounded-lg border p-4">
+        <h2 className="font-semibold text-gray-900 mb-1">Backfill Snapshot Referral</h2>
+        <p className="text-xs text-gray-500 mb-3">
+          Mengisi data snapshot untuk rentang tanggal yang belum terupdate. <b>Tidak mengirim ke Telegram</b> — hanya mengisi database supaya muncul di Dashboard.
+        </p>
+        <div className="flex items-end gap-2 flex-wrap">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Dari Tanggal</label>
+            <input type="date" value={backfillStart} onChange={e => setBackfillStart(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Sampai Tanggal</label>
+            <input type="date" value={backfillEnd} onChange={e => setBackfillEnd(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Divisi (opsional)</label>
+            <select value={backfillDivision} onChange={e => setBackfillDivision(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm">
+              <option value="">Semua divisi</option>
+              {(divisionList.divisions || divisionList || []).map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <button onClick={handleBackfill}
+            className="bg-amber-600 text-white px-4 py-1.5 rounded text-sm hover:bg-amber-700">
+            Run Backfill
+          </button>
+        </div>
+        {backfillStatus && <div className="text-xs text-gray-700 mt-2">{backfillStatus}</div>}
       </div>
 
       <CrudTable title="Referral Codes" columns={columns} rows={rows}

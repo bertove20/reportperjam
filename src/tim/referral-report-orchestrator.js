@@ -35,8 +35,11 @@ function toDDMMYYYY(dateStr) {
  * @param {string} targetDate — YYYY-MM-DD (biasanya kemarin saat dipanggil 00:05)
  * @param {number} tenantId
  * @param {number|null} divisionId — kalau di-set, hanya kirim untuk divisi ini (untuk manual test)
+ * @param {Object} [opts]
+ * @param {boolean} [opts.skipTelegram=false] — true: hanya fetch + upsert snapshot, tidak render & kirim ke TG
  */
-export async function sendReferralReports(targetDate, tenantId, divisionId = null) {
+export async function sendReferralReports(targetDate, tenantId, divisionId = null, opts = {}) {
+  const { skipTelegram = false } = opts;
   const allDivisions = await getReferralsGroupedByDivision(tenantId);
   const divisions = divisionId
     ? allDivisions.filter(d => d.division_id === parseInt(divisionId))
@@ -52,7 +55,7 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
   const dateDDMMYYYY = toDDMMYYYY(targetDate);
 
   for (const div of divisions) {
-    if (!div.tg_group_id) {
+    if (!skipTelegram && !div.tg_group_id) {
       logger.warn({ division: div.division_name }, 'Division has no tg_group_id — skip');
       continue;
     }
@@ -147,36 +150,67 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
         await new Promise(r => setTimeout(r, DELAY_BETWEEN_BRANDS));
       }
 
-      // Ambil breakdown bulanan per (brand, referral) untuk divisi ini
-      let monthly = [];
-      try {
-        monthly = await getReferralMonthlyBreakdown(tenantId, div.division_id, targetDate);
-      } catch (err) {
-        logger.warn({ err: err.message, division: div.division_name }, 'Get monthly breakdown failed');
+      if (skipTelegram) {
+        const duration = Date.now() - start;
+        logger.info({ division: div.division_name, date: targetDate, brands: brandReports.length }, 'Referral snapshot backfilled (no TG send)');
+        await insertLog('referral-backfill', div.division_name, 'success', `${targetDate} · ${brandReports.length} brands`, duration);
+      } else {
+        // Ambil breakdown bulanan per (brand, referral) untuk divisi ini
+        let monthly = [];
+        try {
+          monthly = await getReferralMonthlyBreakdown(tenantId, div.division_id, targetDate);
+        } catch (err) {
+          logger.warn({ err: err.message, division: div.division_name }, 'Get monthly breakdown failed');
+        }
+
+        // Render + send
+        const html = buildReferralReportHtml({
+          divisionName: div.division_name,
+          date: targetDate,
+          monthly,
+        });
+        const png = await renderPng(html, { width: 1720 });
+        const caption = `📋 Referral Report │ ${div.division_name} │ ${targetDate}`;
+
+        await sendPhoto(div.tg_group_id, png, caption, tenantId);
+
+        const duration = Date.now() - start;
+        logger.info({ division: div.division_name, brands: brandReports.length }, 'Referral report sent');
+        await insertLog('referral-report', div.division_name, 'success', `${brandReports.length} brands`, duration);
       }
-
-      // Render + send
-      const html = buildReferralReportHtml({
-        divisionName: div.division_name,
-        date: targetDate,
-        monthly,
-      });
-      const png = await renderPng(html, { width: 1720 });
-      const caption = `📋 Referral Report │ ${div.division_name} │ ${targetDate}`;
-
-      await sendPhoto(div.tg_group_id, png, caption, tenantId);
-
-      const duration = Date.now() - start;
-      logger.info({ division: div.division_name, brands: brandReports.length }, 'Referral report sent');
-      await insertLog('referral-report', div.division_name, 'success', `${brandReports.length} brands`, duration);
     } catch (err) {
       const duration = Date.now() - start;
       logger.error({ division: div.division_name, err: err.message }, 'Referral report failed');
-      await insertLog('referral-report', div.division_name, 'error', err.message, duration);
+      await insertLog(skipTelegram ? 'referral-backfill' : 'referral-report', div.division_name, 'error', err.message, duration);
     }
 
     await new Promise(r => setTimeout(r, DELAY_BETWEEN_DIVISIONS));
   }
 
   logger.info({ tenantId, divisions: divisions.length }, 'Referral report cycle complete');
+}
+
+/**
+ * Backfill snapshot untuk rentang tanggal (tidak kirim Telegram).
+ * Iterate per hari dari startDate ke endDate (inclusive) dan panggil
+ * sendReferralReports dengan skipTelegram=true.
+ */
+export async function backfillReferralSnapshots(startDate, endDate, tenantId, divisionId = null) {
+  const dates = [];
+  const start = new Date(startDate + 'T00:00:00Z');
+  const end = new Date(endDate + 'T00:00:00Z');
+  if (end < start) throw new Error('endDate must be >= startDate');
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+
+  logger.info({ tenantId, divisionId, dates: dates.length, startDate, endDate }, 'Referral backfill started');
+  for (const date of dates) {
+    try {
+      await sendReferralReports(date, tenantId, divisionId, { skipTelegram: true });
+    } catch (err) {
+      logger.error({ date, err: err.message }, 'Referral backfill failed for date');
+    }
+  }
+  logger.info({ tenantId, dates: dates.length }, 'Referral backfill complete');
 }
