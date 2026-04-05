@@ -134,7 +134,8 @@ function BrandGroup({ group, todayDay }) {
 }
 
 function ReferralRow({ item, todayDay }) {
-  const { referral_code, display_name, days } = item
+  const { referral_code, display_name, referral_type, days } = item
+  const typeLabel = referral_type || 'SUNTIK TRAFFIC'
 
   // Totals
   const totalNew = days.reduce((a, d) => a + (d.new_regis || 0), 0)
@@ -155,7 +156,7 @@ function ReferralRow({ item, todayDay }) {
       {/* Referral sub-header */}
       <div className="flex items-center justify-between px-5 py-2 bg-gray-50 border-b">
         <div className="flex items-center gap-3">
-          <span className="bg-gray-900 text-white text-[10px] font-bold px-2 py-0.5 rounded tracking-wider">SUNTIK TRAFFIC</span>
+          <span className="bg-gray-900 text-white text-[10px] font-bold px-2 py-0.5 rounded tracking-wider">{typeLabel}</span>
           <span className="bg-green-200 text-green-900 text-xs font-bold font-mono px-2 py-0.5 rounded">ID REFF : {referral_code}</span>
           {display_name && <span className="text-xs text-gray-600">{display_name}</span>}
         </div>

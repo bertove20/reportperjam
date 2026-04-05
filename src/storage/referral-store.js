@@ -26,11 +26,12 @@ export async function getReferralCode(id, tenantId) {
 
 export async function createReferralCode(tenantId, data) {
   const result = await query(`
-    INSERT INTO referral_codes (tenant_id, brand_key, referral_code, division_id, display_name, is_active)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO referral_codes (tenant_id, brand_key, referral_code, division_id, display_name, referral_type, is_active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT(tenant_id, brand_key, referral_code) DO UPDATE
       SET division_id = EXCLUDED.division_id,
           display_name = EXCLUDED.display_name,
+          referral_type = EXCLUDED.referral_type,
           is_active = EXCLUDED.is_active,
           updated_at = NOW()
     RETURNING *
@@ -40,6 +41,7 @@ export async function createReferralCode(tenantId, data) {
     data.referral_code,
     data.division_id ?? null,
     data.display_name ?? null,
+    data.referral_type ?? null,
     data.is_active ?? 1,
   ]);
   return result.rows[0];
@@ -49,7 +51,7 @@ export async function updateReferralCode(id, tenantId, data) {
   const fields = [];
   const values = [];
   let idx = 1;
-  const allowed = ['brand_key', 'referral_code', 'division_id', 'display_name', 'is_active'];
+  const allowed = ['brand_key', 'referral_code', 'division_id', 'display_name', 'referral_type', 'is_active'];
   for (const f of allowed) {
     if (data[f] !== undefined) {
       fields.push(`${f} = $${idx++}`);
@@ -126,7 +128,7 @@ export async function getReferralMonthlyBreakdown(tenantId, divisionId, targetDa
 
   // All active referrals for this division with brand metadata
   const refs = await queryRows(`
-    SELECT rc.brand_key, rc.referral_code, rc.display_name,
+    SELECT rc.brand_key, rc.referral_code, rc.display_name, rc.referral_type,
            b.name AS brand_name, b.primary_color AS brand_color
     FROM referral_codes rc
     LEFT JOIN report_brands b ON b.key = rc.brand_key AND b.tenant_id = rc.tenant_id
@@ -169,6 +171,7 @@ export async function getReferralMonthlyBreakdown(tenantId, divisionId, targetDa
       brand_color: r.brand_color || '#7c3aed',
       referral_code: r.referral_code,
       display_name: r.display_name || r.referral_code,
+      referral_type: r.referral_type || 'SUNTIK TRAFFIC',
       days,
       year,
       month,

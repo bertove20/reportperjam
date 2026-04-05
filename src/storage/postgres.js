@@ -425,6 +425,7 @@ async function migrateToMultiTenant() {
     'ALTER TABLE loans ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
     'ALTER TABLE settings ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
     'ALTER TABLE divisions ADD COLUMN IF NOT EXISTS tg_group_id TEXT',
+    'ALTER TABLE referral_codes ADD COLUMN IF NOT EXISTS referral_type TEXT',
   ];
 
   // Referral codes table (brand → referral → division mapping)

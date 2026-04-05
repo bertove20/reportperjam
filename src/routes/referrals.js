@@ -26,7 +26,7 @@ export default async function referralRoutes(app) {
   // POST /api/referrals
   app.post('/api/referrals', async (request, reply) => {
     const tid = request.tenantId;
-    const { brand_key, referral_code, division_id, display_name, is_active } = request.body || {};
+    const { brand_key, referral_code, division_id, display_name, referral_type, is_active } = request.body || {};
     if (!brand_key || !referral_code) {
       return reply.code(400).send({ error: 'brand_key and referral_code are required' });
     }
@@ -35,6 +35,7 @@ export default async function referralRoutes(app) {
       referral_code: referral_code.trim(),
       division_id: division_id ? parseInt(division_id) : null,
       display_name: display_name || null,
+      referral_type: referral_type || null,
       is_active: is_active ?? 1,
     });
     return row;

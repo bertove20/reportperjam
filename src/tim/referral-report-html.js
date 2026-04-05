@@ -313,7 +313,8 @@ export function buildReferralReportHtml({ divisionName, date, monthly = [] }) {
 }
 
 function buildReferralCard(item, todayDay) {
-  const { brand_name, referral_code, display_name, days, daysInMonth } = item;
+  const { brand_name, referral_code, display_name, referral_type, days, daysInMonth } = item;
+  const typeLabel = referral_type || 'SUNTIK TRAFFIC';
 
   // Determine max for y-axis scale
   let maxVal = 0;
@@ -378,7 +379,7 @@ function buildReferralCard(item, todayDay) {
   <div class="ref-card">
     <div class="brand-banner">
       <div class="brand-left">
-        <div class="suntik-badge">SUNTIK TRAFFIC</div>
+        <div class="suntik-badge">${escapeHtml(typeLabel)}</div>
         <div class="ref-badge">ID REFF : ${escapeHtml(referral_code)}</div>
       </div>
       <div class="brand-name">${escapeHtml(brand_name)}</div>

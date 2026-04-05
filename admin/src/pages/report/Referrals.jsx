@@ -41,6 +41,7 @@ export default function Referrals() {
       referral_code: r.referral_code,
       division_id: r.division_id,
       display_name: r.display_name,
+      referral_type: r.referral_type,
       is_active: r.is_active,
     })
     setModal(true)
@@ -59,7 +60,8 @@ export default function Referrals() {
   const columns = [
     { key: 'brand_key', label: 'Brand', render: r => <span className="font-mono text-xs">{r.brand_key}</span> },
     { key: 'referral_code', label: 'Referral Code', render: r => <span className="font-mono font-medium">{r.referral_code}</span> },
-    { key: 'display_name', label: 'Display Name', render: r => r.display_name || <span className="text-gray-400">—</span> },
+    { key: 'referral_type', label: 'Jenis Referall', render: r => r.referral_type || <span className="text-gray-400">—</span> },
+    { key: 'display_name', label: 'Keterangan', render: r => r.display_name || <span className="text-gray-400">—</span> },
     { key: 'division_name', label: 'Division', render: r => r.division_name || <span className="text-red-500 text-xs">No division</span> },
     { key: 'is_active', label: 'Active', render: r => r.is_active ? <span className="text-green-600">Yes</span> : <span className="text-red-500">No</span> },
   ]
@@ -110,8 +112,10 @@ export default function Referrals() {
             ]} />
           <Input label="Referral Code" value={form.referral_code || ''} onChange={setF('referral_code')}
             placeholder="mis. pastirankp138" required />
-          <Input label="Display Name" value={form.display_name || ''} onChange={setF('display_name')}
-            placeholder="Nama agen (opsional)" />
+          <Input label="Jenis Referall" value={form.referral_type || ''} onChange={setF('referral_type')}
+            placeholder="mis. SUNTIK TRAFFIC, ORGANIC, PAID ADS" />
+          <Input label="Keterangan" value={form.display_name || ''} onChange={setF('display_name')}
+            placeholder="Catatan tambahan (opsional)" />
           <Select label="Division" value={form.division_id || ''} onChange={setF('division_id')}
             options={[
               { value: '', label: '-- pilih divisi --' },
