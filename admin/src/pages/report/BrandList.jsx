@@ -65,6 +65,18 @@ export default function BrandList() {
     await reorder(newList)
   }
 
+  const handleToggleActive = async (brand) => {
+    const next = brand.is_active ? 0 : 1
+    const action = next ? 'mengaktifkan' : 'menonaktifkan'
+    if (!confirm(`Yakin ${action} brand ${brand.name}?${next ? '' : '\n\nBrand yang nonaktif tidak akan ikut cron fetch & kirim report.'}`)) return
+    try {
+      await brandsApi.update(brand.key, { is_active: next })
+      queryClient.invalidateQueries({ queryKey: ['brands'] })
+    } catch (err) {
+      alert(`Gagal update status: ${err.message}`)
+    }
+  }
+
   const handleLogin = async (key, name) => {
     alert(`Browser akan terbuka untuk login ${name}.\n\nLogin manual di browser, setelah masuk dashboard tunggu cookie otomatis tercapture.`)
     try {
@@ -133,9 +145,13 @@ export default function BrandList() {
                 </td>
                 <td className="px-4 py-3 text-gray-600">{brand.domain}</td>
                 <td className="px-4 py-3 text-center">
-                  <span className={`px-2 py-0.5 rounded text-xs ${brand.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  <button
+                    onClick={() => handleToggleActive(brand)}
+                    className={`px-2 py-0.5 rounded text-xs cursor-pointer transition hover:opacity-80 ${brand.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                    title="Klik untuk mengaktifkan/menonaktifkan brand"
+                  >
                     {brand.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                  </button>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
