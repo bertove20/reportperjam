@@ -119,31 +119,39 @@ function ReferralCard({ item, todayDay }) {
 
       {/* Day-by-day table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-xs">
+        <table className="text-[11px] border-collapse" style={{ tableLayout: 'fixed', width: 'max-content' }}>
+          <colgroup>
+            <col style={{ width: 95 }} />
+            {days.map(d => <col key={d.day} style={{ width: 30 }} />)}
+            <col style={{ width: 55 }} />
+          </colgroup>
           <tbody>
             <tr>
-              <td className="bg-green-200 text-green-900 font-bold px-2 py-1 border border-gray-400 text-center w-28">Tanggal</td>
+              <td className="bg-green-200 text-green-900 font-bold px-2 py-1 border border-gray-400 text-center">Tanggal</td>
               {days.map(d => (
-                <td key={d.day} className={`bg-green-100 text-green-900 font-semibold px-1 py-1 border border-gray-300 text-center ${d.day === todayDay ? 'ring-2 ring-amber-500' : ''}`}>
+                <td key={d.day} className={`bg-green-100 text-green-900 font-semibold py-1 border border-gray-300 text-center ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
                   {d.day}
                 </td>
               ))}
+              <td className="bg-green-300 text-green-900 font-bold py-1 border border-gray-400 text-center">TOTAL</td>
             </tr>
             <tr>
               <td className="bg-red-200 text-red-900 font-bold px-2 py-1 border border-gray-400 text-center">New Regis</td>
               {days.map(d => (
-                <td key={d.day} className={`bg-red-50 text-red-900 px-1 py-1 border border-gray-300 text-center font-medium ${d.day === todayDay ? 'ring-2 ring-amber-500' : ''}`}>
+                <td key={d.day} className={`bg-red-50 text-red-900 py-1 border border-gray-300 text-center font-medium tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
                   {d.new_regis || ''}
                 </td>
               ))}
+              <td className="bg-red-300 text-red-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalNew}</td>
             </tr>
             <tr>
               <td className="bg-blue-200 text-blue-900 font-bold px-2 py-1 border border-gray-400 text-center">New Deposit</td>
               {days.map(d => (
-                <td key={d.day} className={`bg-blue-50 text-blue-900 px-1 py-1 border border-gray-300 text-center font-medium ${d.day === todayDay ? 'ring-2 ring-amber-500' : ''}`}>
+                <td key={d.day} className={`bg-blue-50 text-blue-900 py-1 border border-gray-300 text-center font-medium tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
                   {d.depo_regis || ''}
                 </td>
               ))}
+              <td className="bg-blue-300 text-blue-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalDepo}</td>
             </tr>
             <tr>
               <td className="bg-lime-200 text-lime-900 font-bold px-2 py-1 border border-gray-400 text-center">Persentase</td>
@@ -151,11 +159,12 @@ function ReferralCard({ item, todayDay }) {
                 const total = (d.new_regis || 0) + (d.depo_regis || 0)
                 const p = total > 0 ? ((d.depo_regis / total) * 100).toFixed(1) + '%' : ''
                 return (
-                  <td key={d.day} className={`bg-lime-50 text-lime-900 px-1 py-1 border border-gray-300 text-center ${d.day === todayDay ? 'ring-2 ring-amber-500' : ''}`}>
+                  <td key={d.day} className={`bg-lime-50 text-lime-900 py-1 border border-gray-300 text-center tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
                     {p}
                   </td>
                 )
               })}
+              <td className="bg-lime-300 text-lime-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalRatio}</td>
             </tr>
           </tbody>
         </table>

@@ -143,16 +143,18 @@ export function buildReferralReportHtml({ divisionName, date, monthly = [] }) {
 
   /* Month table */
   .month-table {
-    width: 100%;
     border-collapse: collapse;
     font-size: 11px;
     font-family: 'Segoe UI', Arial, sans-serif;
+    table-layout: fixed;
+    margin: 0 auto;
   }
   .month-table th, .month-table td {
     border: 1px solid #111827;
-    padding: 5px 3px;
+    padding: 5px 2px;
     text-align: center;
     font-variant-numeric: tabular-nums;
+    width: 38px;
   }
   .month-table .row-label {
     background: #86efac;
@@ -160,8 +162,15 @@ export function buildReferralReportHtml({ divisionName, date, monthly = [] }) {
     font-weight: 800;
     text-align: left;
     padding: 5px 10px;
-    width: 110px;
+    width: 120px;
     font-size: 11px;
+  }
+  .month-table .col-total {
+    background: #fcd34d !important;
+    color: #78350f !important;
+    font-weight: 800 !important;
+    width: 70px;
+    font-size: 12px;
   }
   .month-table .row-tanggal .row-label { background: #86efac; }
   .month-table .row-regis .row-label { background: #fecaca; }
@@ -317,6 +326,15 @@ function buildReferralCard(item, todayDay) {
   // Round up to nice number
   const niceMax = Math.ceil(maxVal / 10) * 10 || 10;
 
+  // Totals
+  let totalNew = 0;
+  let totalDepo = 0;
+  for (const d of days) {
+    totalNew += d.new_regis || 0;
+    totalDepo += d.depo_regis || 0;
+  }
+  const totalPct = pct(totalNew, totalDepo) || '—';
+
   // Table rows (limit to daysInMonth)
   const dayHeaders = [];
   const regisCells = [];
@@ -371,18 +389,22 @@ function buildReferralCard(item, todayDay) {
       <tr class="row-tanggal">
         <td class="row-label">Tanggal</td>
         ${dayHeaders.join('')}
+        <td class="col-total">TOTAL</td>
       </tr>
       <tr class="row-regis">
         <td class="row-label">New Regis</td>
         ${regisCells.join('')}
+        <td class="col-total">${fmt(totalNew) || '0'}</td>
       </tr>
       <tr class="row-depo">
         <td class="row-label">New Deposit</td>
         ${depoCells.join('')}
+        <td class="col-total">${fmt(totalDepo) || '0'}</td>
       </tr>
       <tr class="row-pct">
         <td class="row-label">Persentase</td>
         ${pctCells.join('')}
+        <td class="col-total">${totalPct}</td>
       </tr>
     </table>
     <div class="chart-wrap">
