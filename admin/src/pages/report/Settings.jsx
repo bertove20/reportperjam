@@ -10,20 +10,20 @@ export default function Settings() {
 
   const { data: currentSettings, isLoading } = useQuery({
     queryKey: ['settings'],
-    queryFn: settingsApi.get,
+    queryFn: () => settingsApi.get('report'),
+  })
+
+  const saveMutation = useMutation({
+    mutationFn: (data) => settingsApi.update({ ...data, module: 'report' }),
+    onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 3000) },
   })
 
   useEffect(() => {
     if (currentSettings) setForm(currentSettings)
   }, [currentSettings])
 
-  const saveMutation = useMutation({
-    mutationFn: (data) => settingsApi.update(data),
-    onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 3000) },
-  })
-
   const testTgMutation = useMutation({
-    mutationFn: () => settingsApi.testTelegram(),
+    mutationFn: () => settingsApi.testTelegram('report'),
   })
 
   const changePwMutation = useMutation({
