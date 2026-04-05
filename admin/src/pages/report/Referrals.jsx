@@ -31,6 +31,17 @@ export default function Referrals() {
     mutationFn: (id) => referralsApi.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['referrals'] }),
   })
+  const toggleMut = useMutation({
+    mutationFn: ({ id, is_active }) => referralsApi.update(id, { is_active }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['referrals'] }),
+  })
+
+  const handleToggleActive = (r) => {
+    const next = r.is_active ? 0 : 1
+    const action = next ? 'mengaktifkan' : 'menonaktifkan'
+    if (!confirm(`${action[0].toUpperCase() + action.slice(1)} referral ${r.referral_code}?${next ? '' : '\n\nReferral nonaktif tidak akan dikirim ke Telegram dan tidak muncul di Dashboard.'}`)) return
+    toggleMut.mutate({ id: r.id, is_active: next })
+  }
 
   const setF = (k) => (e) => setForm({ ...form, [k]: e.target.value })
   const openAdd = () => { setEditing(null); setForm({ is_active: 1 }); setModal(true) }
@@ -63,7 +74,21 @@ export default function Referrals() {
     { key: 'referral_type', label: 'Jenis Referall', render: r => r.referral_type || <span className="text-gray-400">—</span> },
     { key: 'display_name', label: 'Keterangan', render: r => r.display_name || <span className="text-gray-400">—</span> },
     { key: 'division_name', label: 'Division', render: r => r.division_name || <span className="text-red-500 text-xs">No division</span> },
-    { key: 'is_active', label: 'Active', render: r => r.is_active ? <span className="text-green-600">Yes</span> : <span className="text-red-500">No</span> },
+    {
+      key: 'is_active',
+      label: 'Kirim ke TG',
+      render: r => (
+        <button
+          onClick={() => handleToggleActive(r)}
+          className={`px-2 py-0.5 rounded text-xs font-semibold cursor-pointer transition hover:opacity-80 ${
+            r.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+          }`}
+          title="Klik untuk toggle aktif/nonaktif (dikirim ke Telegram & muncul di Dashboard)"
+        >
+          {r.is_active ? 'Active' : 'Inactive'}
+        </button>
+      ),
+    },
   ]
 
   return (
