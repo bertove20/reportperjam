@@ -424,7 +424,25 @@ async function migrateToMultiTenant() {
     'ALTER TABLE fifo_allocations ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
     'ALTER TABLE loans ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
     'ALTER TABLE settings ADD COLUMN IF NOT EXISTS tenant_id INTEGER',
+    'ALTER TABLE divisions ADD COLUMN IF NOT EXISTS tg_group_id TEXT',
   ];
+
+  // Referral codes table (brand → referral → division mapping)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS referral_codes (
+      id SERIAL PRIMARY KEY,
+      tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
+      brand_key TEXT NOT NULL,
+      referral_code TEXT NOT NULL,
+      division_id INTEGER REFERENCES divisions(id) ON DELETE SET NULL,
+      display_name TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `).catch(() => {});
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_referral_codes ON referral_codes(tenant_id, brand_key, referral_code)').catch(() => {});
+  await query('CREATE INDEX IF NOT EXISTS idx_referral_codes_division ON referral_codes(division_id)').catch(() => {});
 
   for (const sql of alterations) {
     await query(sql).catch(() => {});

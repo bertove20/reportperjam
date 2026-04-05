@@ -109,20 +109,26 @@ export default async function userRoutes(app) {
 
   app.post('/api/divisions', adminOnly, async (request) => {
     const tid = request.tenantId;
-    const { name, description } = request.body || {};
+    const { name, description, tg_group_id } = request.body || {};
     const result = await query(
-      'INSERT INTO divisions (name, description, tenant_id) VALUES ($1, $2, $3) RETURNING *',
-      [name, description || null, tid]
+      'INSERT INTO divisions (name, description, tg_group_id, tenant_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, description || null, tg_group_id || null, tid]
     );
     return result.rows[0];
   });
 
   app.put('/api/divisions/:id', adminOnly, async (request) => {
     const tid = request.tenantId;
-    const { name, description, is_active } = request.body || {};
+    const { name, description, is_active, tg_group_id } = request.body || {};
     await query(
-      'UPDATE divisions SET name = COALESCE($1, name), description = COALESCE($2, description), is_active = COALESCE($3, is_active), updated_at = NOW() WHERE id = $4 AND tenant_id = $5',
-      [name, description, is_active, request.params.id, tid]
+      `UPDATE divisions SET
+         name = COALESCE($1, name),
+         description = COALESCE($2, description),
+         is_active = COALESCE($3, is_active),
+         tg_group_id = COALESCE($4, tg_group_id),
+         updated_at = NOW()
+       WHERE id = $5 AND tenant_id = $6`,
+      [name, description, is_active, tg_group_id, request.params.id, tid]
     );
     return { success: true };
   });
