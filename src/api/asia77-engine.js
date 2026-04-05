@@ -198,7 +198,7 @@ export async function fetchMembersFiltered(brandKey, domain, userId, opts) {
 
   const filter = { fs: [dateDDMMYYYY, dateDDMMYYYY] };
   if (newmb === true) filter.newmb = [true];
-  else if (newmb === false) filter.newmb = [false];
+  else if (newmb === false) filter.nonnewmb = [true];
   if (referralCodes && referralCodes.length > 0) filter.refusnm = referralCodes;
 
   while (true) {
