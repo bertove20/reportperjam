@@ -42,6 +42,29 @@ export default function BrandList() {
     }
   }
 
+  const reorder = async (newList) => {
+    const updates = newList
+      .map((b, i) => (b.sort_order !== i ? brandsApi.update(b.key, { sort_order: i }) : null))
+      .filter(Boolean)
+    if (updates.length === 0) return
+    await Promise.all(updates)
+    queryClient.invalidateQueries({ queryKey: ['brands'] })
+  }
+
+  const handleMoveUp = async (index) => {
+    if (index === 0) return
+    const newList = [...brandList]
+    ;[newList[index - 1], newList[index]] = [newList[index], newList[index - 1]]
+    await reorder(newList)
+  }
+
+  const handleMoveDown = async (index) => {
+    if (index >= brandList.length - 1) return
+    const newList = [...brandList]
+    ;[newList[index], newList[index + 1]] = [newList[index + 1], newList[index]]
+    await reorder(newList)
+  }
+
   const handleLogin = async (key, name) => {
     alert(`Browser akan terbuka untuk login ${name}.\n\nLogin manual di browser, setelah masuk dashboard tunggu cookie otomatis tercapture.`)
     try {
@@ -68,6 +91,7 @@ export default function BrandList() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-4 py-3 text-center w-20">Order</th>
               <th className="px-4 py-3 text-left">Brand</th>
               <th className="px-4 py-3 text-left">Engine</th>
               <th className="px-4 py-3 text-left">Domain</th>
@@ -77,8 +101,29 @@ export default function BrandList() {
             </tr>
           </thead>
           <tbody>
-            {brandList.map(brand => (
+            {brandList.map((brand, index) => (
               <tr key={brand.key} className="border-t hover:bg-gray-50">
+                <td className="px-4 py-3 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <button
+                      onClick={() => handleMoveUp(index)}
+                      disabled={index === 0}
+                      className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Pindah ke atas"
+                    >
+                      ↑
+                    </button>
+                    <span className="text-xs text-gray-500 w-4 text-center">{index + 1}</span>
+                    <button
+                      onClick={() => handleMoveDown(index)}
+                      disabled={index === brandList.length - 1}
+                      className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Pindah ke bawah"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </td>
                 <td className="px-4 py-3">
                   <div className="font-medium text-gray-900">{brand.name}</div>
                   <div className="text-xs text-gray-500">{brand.key}</div>
