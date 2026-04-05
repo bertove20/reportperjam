@@ -1,0 +1,126 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { referrals as referralsApi, brands as brandsApi, admin, actions } from '../../api/client'
+import CrudTable, { FormModal, Input, Select } from '../../components/CrudTable'
+
+export default function Referrals() {
+  const qc = useQueryClient()
+  const [modal, setModal] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState({})
+  const [sendDate, setSendDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().slice(0, 10)
+  })
+  const [sendDivision, setSendDivision] = useState('')
+
+  const { data: rows = [] } = useQuery({ queryKey: ['referrals'], queryFn: () => referralsApi.list() })
+  const { data: brandList = [] } = useQuery({ queryKey: ['brands-all'], queryFn: () => brandsApi.list(false) })
+  const { data: divisionList = [] } = useQuery({ queryKey: ['admin-divisions'], queryFn: () => admin.divisions.list() })
+
+  const createMut = useMutation({
+    mutationFn: (d) => referralsApi.create(d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['referrals'] }); setModal(false) },
+  })
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...d }) => referralsApi.update(id, d),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['referrals'] }); setModal(false) },
+  })
+  const deleteMut = useMutation({
+    mutationFn: (id) => referralsApi.delete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['referrals'] }),
+  })
+
+  const setF = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const openAdd = () => { setEditing(null); setForm({ is_active: 1 }); setModal(true) }
+  const openEdit = (r) => {
+    setEditing(r)
+    setForm({
+      brand_key: r.brand_key,
+      referral_code: r.referral_code,
+      division_id: r.division_id,
+      display_name: r.display_name,
+      is_active: r.is_active,
+    })
+    setModal(true)
+  }
+
+  const handleSendNow = async () => {
+    if (!confirm(`Kirim referral report untuk tanggal ${sendDate}${sendDivision ? ' (divisi terpilih)' : ' (semua divisi)'}?`)) return
+    try {
+      await actions.referralReportNow(sendDate, sendDivision || null)
+      alert('Referral report dikirim. Cek grup Telegram divisi beberapa saat lagi.')
+    } catch (err) {
+      alert(`Gagal: ${err.message}`)
+    }
+  }
+
+  const columns = [
+    { key: 'brand_key', label: 'Brand', render: r => <span className="font-mono text-xs">{r.brand_key}</span> },
+    { key: 'referral_code', label: 'Referral Code', render: r => <span className="font-mono font-medium">{r.referral_code}</span> },
+    { key: 'display_name', label: 'Display Name', render: r => r.display_name || <span className="text-gray-400">—</span> },
+    { key: 'division_name', label: 'Division', render: r => r.division_name || <span className="text-red-500 text-xs">No division</span> },
+    { key: 'is_active', label: 'Active', render: r => r.is_active ? <span className="text-green-600">Yes</span> : <span className="text-red-500">No</span> },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-lg border p-4">
+        <h2 className="font-semibold text-gray-900 mb-3">Kirim Referral Report Manual</h2>
+        <div className="flex items-end gap-2">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Tanggal</label>
+            <input type="date" value={sendDate} onChange={e => setSendDate(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Divisi (opsional)</label>
+            <select value={sendDivision} onChange={e => setSendDivision(e.target.value)}
+              className="border rounded px-3 py-1.5 text-sm">
+              <option value="">Semua divisi</option>
+              {(divisionList.divisions || divisionList || []).map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <button onClick={handleSendNow}
+            className="bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">
+            Send Report Now
+          </button>
+        </div>
+        <p className="text-xs text-gray-500 mt-2">
+          Report otomatis terkirim setiap hari jam 00:05 WIB. Gunakan tombol di atas untuk test / kirim ulang manual.
+        </p>
+      </div>
+
+      <CrudTable title="Referral Codes" columns={columns} rows={rows}
+        onAdd={openAdd} onEdit={openEdit}
+        onDelete={(r) => { if (confirm(`Delete referral ${r.referral_code}?`)) deleteMut.mutate(r.id) }} />
+
+      {modal && (
+        <FormModal title={editing ? 'Edit Referral' : 'Add Referral'}
+          onClose={() => setModal(false)}
+          onSubmit={() => editing ? updateMut.mutate({ id: editing.id, ...form }) : createMut.mutate(form)}
+          loading={createMut.isPending || updateMut.isPending}>
+          <Select label="Brand" value={form.brand_key || ''} onChange={setF('brand_key')} required
+            options={[
+              { value: '', label: '-- pilih brand --' },
+              ...brandList.map(b => ({ value: b.key, label: `${b.name} (${b.key})` })),
+            ]} />
+          <Input label="Referral Code" value={form.referral_code || ''} onChange={setF('referral_code')}
+            placeholder="mis. pastirankp138" required />
+          <Input label="Display Name" value={form.display_name || ''} onChange={setF('display_name')}
+            placeholder="Nama agen (opsional)" />
+          <Select label="Division" value={form.division_id || ''} onChange={setF('division_id')}
+            options={[
+              { value: '', label: '-- pilih divisi --' },
+              ...(divisionList.divisions || divisionList || []).map(d => ({ value: d.id, label: d.name })),
+            ]} />
+          <Select label="Active" value={form.is_active ?? '1'} onChange={setF('is_active')}
+            options={[{ value: '1', label: 'Yes' }, { value: '0', label: 'No' }]} />
+        </FormModal>
+      )}
+    </div>
+  )
+}

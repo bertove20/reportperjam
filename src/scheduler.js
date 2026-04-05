@@ -9,6 +9,7 @@ import { queryRows } from './storage/postgres.js';
 import { getSetting } from './storage/settings-store.js';
 import { fetchAllBrands, fetchAllBrandsFinish } from './api/fetch-brand.js';
 import { sendTimReports } from './tim/tim-orchestrator.js';
+import { sendReferralReports } from './tim/referral-report-orchestrator.js';
 import { cleanOldLogs } from './storage/log-store.js';
 import { keepaliveAsia77 } from './api/asia77-engine.js';
 import { getBrands } from './tim/brand-configs.js';
@@ -67,6 +68,13 @@ export async function startScheduler() {
 
         await fetchAllBrandsFinish(yesterdayStr, tenant.id);
         await sendTimReports(0, yesterdayStr, dayBeforeStr, null, tenant.id);
+
+        // Referral report harian per divisi — kirim untuk data kemarin
+        try {
+          await sendReferralReports(yesterdayStr, tenant.id);
+        } catch (err) {
+          logger.error({ tenant: tenant.slug, err: err.message }, 'Referral report failed');
+        }
       } catch (err) {
         logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant FINISH failed');
       }

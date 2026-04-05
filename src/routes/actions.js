@@ -10,6 +10,7 @@
 import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
 import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia77DepositHistory } from '../api/asia77-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
+import { sendReferralReports } from '../tim/referral-report-orchestrator.js';
 import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
@@ -66,6 +67,20 @@ export default async function actionRoutes(app) {
     });
 
     return { success: true, message: `FINISH fetch started for ${targetDate}` };
+  });
+
+  // POST /api/actions/referral-report-now
+  app.post('/api/actions/referral-report-now', async (request) => {
+    const tid = request.tenantId;
+    const { date, divisionId } = request.body || {};
+    const targetDate = date || DateTime.now().yesterday().toDateStr();
+
+    logger.info({ tenantId: tid, targetDate, divisionId }, 'Manual referral report triggered');
+    sendReferralReports(targetDate, tid, divisionId || null).catch(err => {
+      logger.error({ err: err.message }, 'Manual referral report failed');
+    });
+
+    return { success: true, message: `Referral report started for ${targetDate}` };
   });
 
   // POST /api/actions/backfill

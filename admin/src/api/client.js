@@ -68,6 +68,17 @@ export const reports = {
   summary: (brand, date) => request(`/reports/summary?brand=${brand}&date=${date}`),
 };
 
+// Referrals (brand → referral → division mapping)
+export const referrals = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return request(`/referrals${qs ? `?${qs}` : ''}`)
+  },
+  create: (data) => request('/referrals', { method: 'POST', body: data }),
+  update: (id, data) => request(`/referrals/${id}`, { method: 'PUT', body: data }),
+  delete: (id) => request(`/referrals/${id}`, { method: 'DELETE' }),
+}
+
 // Settings (module-scoped)
 export const settings = {
   get: (module = 'report') => request(`/settings?module=${module}`),
@@ -192,6 +203,7 @@ export const monitoring = {
 export const actions = {
   fetchNow: (brandKey) => request('/actions/fetch-now', { method: 'POST', body: { brandKey } }),
   reportNow: (brandKey) => request('/actions/report-now', { method: 'POST', body: { brandKey } }),
+  referralReportNow: (date, divisionId) => request('/actions/referral-report-now', { method: 'POST', body: { date, divisionId } }),
   fetchFinish: (date) => request('/actions/fetch-finish', { method: 'POST', body: { date } }),
   backfill: (date, brandKey) => request('/actions/backfill', { method: 'POST', body: { date, brandKey } }),
   missingHours: (brand, date) => request(`/actions/missing-hours?brand=${brand}&date=${date}`),

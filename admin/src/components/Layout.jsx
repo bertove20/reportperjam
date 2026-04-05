@@ -20,6 +20,8 @@ const SIDEBAR_GROUPS = [
       { to: '/report/hourly', label: 'Hourly Report' },
       { to: '/report/history', label: 'History' },
       { to: '/report/comparison', label: 'Comparison' },
+      { to: '/report/referrals', label: 'Referrals' },
+      { to: '/admin/divisions', label: 'Divisions', role: 'superadmin' },
       { to: '/report/settings', label: 'Settings', role: 'superadmin' },
       { to: '/report/logs', label: 'Logs' },
     ],
@@ -45,7 +47,6 @@ const SIDEBAR_GROUPS = [
       { to: '/finance/reports', label: 'Laporan' },
       { to: '/finance/settings', label: 'Settings', role: 'superadmin' },
       { to: '/admin/users', label: 'Users', role: 'superadmin' },
-      { to: '/admin/divisions', label: 'Divisions', role: 'superadmin' },
     ],
   },
   {
