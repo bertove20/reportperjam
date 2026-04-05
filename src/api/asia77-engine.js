@@ -173,6 +173,65 @@ export async function fetchAllMembersWithTime(brandKey, domain, dateDDMMYYYY, us
 }
 
 /**
+ * Fetch member list dengan filter newmb + refusnm + date range.
+ * Untuk referral report harian: group by referral → count per brand per referral.
+ *
+ * @param {string} brandKey
+ * @param {string} domain
+ * @param {number} userId — idus
+ * @param {Object} opts
+ * @param {string} opts.dateDDMMYYYY — filter.fs [date, date]
+ * @param {boolean} opts.newmb — true = Filter By New Member, false = Non New Member, null = All
+ * @param {Array<string>} [opts.referralCodes] — filter.refusnm, empty/undefined = tidak difilter
+ * @param {string} [opts.cookieHeader]
+ * @returns {Array} member objects
+ */
+export async function fetchMembersFiltered(brandKey, domain, userId, opts) {
+  const { dateDDMMYYYY, newmb, referralCodes, cookieHeader: cookieHeaderParam } = opts;
+  const cookieHeader = getCookieHeader(brandKey, cookieHeaderParam);
+  if (!cookieHeader) throw new Error(`No cookies for ${brandKey}`);
+
+  const url = `https://${domain}/memberlist`;
+  const members = [];
+  let page = 1;
+  const limit = 200;
+
+  const filter = { fs: [dateDDMMYYYY, dateDDMMYYYY] };
+  if (newmb === true) filter.newmb = [true];
+  else if (newmb === false) filter.newmb = [false];
+  if (referralCodes && referralCodes.length > 0) filter.refusnm = referralCodes;
+
+  while (true) {
+    const response = await gotScraping.post(url, {
+      json: {
+        idus: userId,
+        filter,
+        sort: { usnm: ['asc'] },
+        limit,
+        page,
+      },
+      headers: { Cookie: cookieHeader },
+      headerGeneratorOptions: {
+        browsers: [{ name: 'chrome', minVersion: 120 }],
+        operatingSystems: ['macos'],
+      },
+      responseType: 'json',
+      timeout: { request: 30000 },
+    });
+
+    const body = validateResponse(response, brandKey);
+    const batch = body?.usls || [];
+    members.push(...batch);
+
+    if (batch.length < limit) break;
+    page++;
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  return members;
+}
+
+/**
  * Fetch deposit history (accepted) untuk satu tanggal — dengan pagination
  * Dipakai untuk backfill TRX per jam dari data historis
  * @returns {Array} [{rcdtm, amt, ...}, ...]
