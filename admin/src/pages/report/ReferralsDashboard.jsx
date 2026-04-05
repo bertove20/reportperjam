@@ -7,6 +7,7 @@ export default function ReferralsDashboard() {
   const today = new Date().toISOString().slice(0, 10)
   const [divisionId, setDivisionId] = useState('')
   const [date, setDate] = useState(today)
+  const [brandFilter, setBrandFilter] = useState('')
 
   const { data: divisionList = [] } = useQuery({
     queryKey: ['admin-divisions'],
@@ -43,6 +44,12 @@ export default function ReferralsDashboard() {
     return Array.from(map.values())
   }, [items])
 
+  // Filter by selected brand (client-side)
+  const visibleGroups = useMemo(() => {
+    if (!brandFilter) return brandGroups
+    return brandGroups.filter(g => g.brand_key === brandFilter)
+  }, [brandGroups, brandFilter])
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -53,13 +60,26 @@ export default function ReferralsDashboard() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border p-4 flex items-end gap-3">
+      <div className="bg-white rounded-lg border p-4 flex items-end gap-3 flex-wrap">
         <div>
           <label className="block text-xs text-gray-600 mb-1">Divisi</label>
-          <select value={divisionId} onChange={e => setDivisionId(e.target.value)}
+          <select value={divisionId} onChange={e => { setDivisionId(e.target.value); setBrandFilter('') }}
             className="border rounded px-3 py-1.5 text-sm min-w-[200px]">
             <option value="">-- pilih divisi --</option>
             {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-gray-600 mb-1">Brand</label>
+          <select value={brandFilter} onChange={e => setBrandFilter(e.target.value)}
+            className="border rounded px-3 py-1.5 text-sm min-w-[200px]"
+            disabled={brandGroups.length === 0}>
+            <option value="">Semua brand ({brandGroups.length})</option>
+            {brandGroups.map(g => (
+              <option key={g.brand_key} value={g.brand_key}>
+                {g.brand_name} ({g.referrals.length} ref)
+              </option>
+            ))}
           </select>
         </div>
         <div>
@@ -67,7 +87,7 @@ export default function ReferralsDashboard() {
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             className="border rounded px-3 py-1.5 text-sm" />
         </div>
-        <div className="text-xs text-gray-500 ml-2">
+        <div className="text-xs text-gray-500 ml-2 flex-1">
           Menampilkan data sepanjang bulan yang memuat tanggal ini
         </div>
       </div>
@@ -80,7 +100,7 @@ export default function ReferralsDashboard() {
         </div>
       )}
 
-      {brandGroups.map((group) => (
+      {visibleGroups.map((group) => (
         <BrandGroup key={group.brand_key} group={group} todayDay={todayDay} />
       ))}
     </div>
