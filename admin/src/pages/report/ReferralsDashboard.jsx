@@ -26,6 +26,23 @@ export default function ReferralsDashboard() {
   const items = dashData?.items || []
   const todayDay = parseInt(date.split('-')[2])
 
+  // Group items by brand
+  const brandGroups = useMemo(() => {
+    const map = new Map()
+    for (const it of items) {
+      if (!map.has(it.brand_key)) {
+        map.set(it.brand_key, {
+          brand_key: it.brand_key,
+          brand_name: it.brand_name,
+          brand_color: it.brand_color,
+          referrals: [],
+        })
+      }
+      map.get(it.brand_key).referrals.push(it)
+    }
+    return Array.from(map.values())
+  }, [items])
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -63,15 +80,61 @@ export default function ReferralsDashboard() {
         </div>
       )}
 
-      {items.map((item) => (
-        <ReferralCard key={`${item.brand_key}-${item.referral_code}`} item={item} todayDay={todayDay} />
+      {brandGroups.map((group) => (
+        <BrandGroup key={group.brand_key} group={group} todayDay={todayDay} />
       ))}
     </div>
   )
 }
 
-function ReferralCard({ item, todayDay }) {
-  const { brand_name, brand_color, referral_code, display_name, days } = item
+function BrandGroup({ group, todayDay }) {
+  // Brand-level totals across all referrals
+  const brandTotals = useMemo(() => {
+    let totalNew = 0
+    let totalDepo = 0
+    const daysCount = group.referrals[0]?.days?.length || 0
+    for (const ref of group.referrals) {
+      for (const d of ref.days) {
+        totalNew += d.new_regis || 0
+        totalDepo += d.depo_regis || 0
+      }
+    }
+    const avgNew = daysCount > 0 ? (totalNew / daysCount).toFixed(1) : '0'
+    const avgDepo = daysCount > 0 ? (totalDepo / daysCount).toFixed(1) : '0'
+    const ratio = (totalNew + totalDepo) > 0
+      ? ((totalDepo / (totalNew + totalDepo)) * 100).toFixed(1) + '%'
+      : '—'
+    return { totalNew, totalDepo, avgNew, avgDepo, ratio }
+  }, [group])
+
+  return (
+    <div className="bg-white rounded-lg border overflow-hidden">
+      {/* Brand group header */}
+      <div className="flex items-center justify-between px-5 py-3 text-white" style={{ background: group.brand_color || '#7c3aed' }}>
+        <div className="flex items-center gap-3">
+          <div className="text-xl font-black tracking-wide">{group.brand_name}</div>
+          <div className="text-xs opacity-80 font-mono">{group.brand_key}</div>
+          <div className="text-xs bg-white/20 rounded px-2 py-0.5">{group.referrals.length} referral</div>
+        </div>
+        <div className="flex gap-5 text-sm">
+          <div><span className="opacity-75">New:</span> <b>{brandTotals.totalNew}</b></div>
+          <div><span className="opacity-75">Depo:</span> <b>{brandTotals.totalDepo}</b></div>
+          <div><span className="opacity-75">Avg/hari:</span> <b>{brandTotals.avgNew} & {brandTotals.avgDepo}</b></div>
+          <div><span className="opacity-75">%:</span> <b>{brandTotals.ratio}</b></div>
+        </div>
+      </div>
+
+      <div className="divide-y">
+        {group.referrals.map((ref) => (
+          <ReferralRow key={ref.referral_code} item={ref} todayDay={todayDay} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ReferralRow({ item, todayDay }) {
+  const { referral_code, display_name, days } = item
 
   // Totals
   const totalNew = days.reduce((a, d) => a + (d.new_regis || 0), 0)
@@ -88,90 +151,74 @@ function ReferralCard({ item, todayDay }) {
   }))
 
   return (
-    <div className="bg-white rounded-lg border overflow-hidden">
-      {/* Brand banner */}
-      <div className="flex items-center" style={{ background: '#fbbf24' }}>
-        <div className="flex flex-col min-w-[240px]">
-          <div className="bg-gray-900 text-white text-center font-bold py-2 text-sm tracking-wider">
-            SUNTIK TRAFFIC
-          </div>
-          <div className="bg-green-200 text-green-900 text-center font-bold py-2 text-xs font-mono border-t border-gray-900">
-            ID REFF : {referral_code}
-          </div>
+    <div>
+      {/* Referral sub-header */}
+      <div className="flex items-center justify-between px-5 py-2 bg-gray-50 border-b">
+        <div className="flex items-center gap-3">
+          <span className="bg-gray-900 text-white text-[10px] font-bold px-2 py-0.5 rounded tracking-wider">SUNTIK TRAFFIC</span>
+          <span className="bg-green-200 text-green-900 text-xs font-bold font-mono px-2 py-0.5 rounded">ID REFF : {referral_code}</span>
+          {display_name && <span className="text-xs text-gray-600">{display_name}</span>}
         </div>
-        <div className="flex-1 text-center text-2xl font-black text-gray-900 tracking-wider py-3">
-          {brand_name}
-        </div>
-        <div className="pr-4 text-right text-xs text-gray-700">
-          <div style={{ background: brand_color, color: 'white', padding: '4px 10px', borderRadius: 4, fontWeight: 700 }}>
-            {display_name || referral_code}
-          </div>
+        <div className="flex gap-4 text-xs">
+          <span className="text-red-600 font-bold tabular-nums">New: {totalNew}</span>
+          <span className="text-blue-600 font-bold tabular-nums">Depo: {totalDepo}</span>
+          <span className="text-green-600 font-bold tabular-nums">{totalRatio}</span>
         </div>
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-4 gap-px bg-gray-200">
-        <Stat label="Total New Regis" value={totalNew} color="text-red-600" />
-        <Stat label="Total New Deposit" value={totalDepo} color="text-blue-600" />
-        <Stat label="Rata-rata/Hari" value={(totalNew / days.length).toFixed(1)} subValue={`& ${(totalDepo / days.length).toFixed(1)}`} color="text-gray-700" />
-        <Stat label="Persentase Overall" value={totalRatio} color="text-green-600" />
-      </div>
-
-      {/* Day-by-day table */}
-      <div className="overflow-x-auto">
-        <table className="text-[11px] border-collapse" style={{ tableLayout: 'fixed', width: 'max-content' }}>
-          <colgroup>
-            <col style={{ width: 95 }} />
-            {days.map(d => <col key={d.day} style={{ width: 30 }} />)}
-            <col style={{ width: 55 }} />
-          </colgroup>
-          <tbody>
-            <tr>
-              <td className="bg-green-200 text-green-900 font-bold px-2 py-1 border border-gray-400 text-center">Tanggal</td>
-              {days.map(d => (
-                <td key={d.day} className={`bg-green-100 text-green-900 font-semibold py-1 border border-gray-300 text-center ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
-                  {d.day}
+      {/* Day-by-day table — full width */}
+      <table className="text-[11px] border-collapse w-full" style={{ tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 110 }} />
+          {days.map(d => <col key={d.day} />)}
+          <col style={{ width: 65 }} />
+        </colgroup>
+        <tbody>
+          <tr>
+            <td className="bg-green-200 text-green-900 font-bold px-2 py-1 border border-gray-400 text-center">Tanggal</td>
+            {days.map(d => (
+              <td key={d.day} className={`bg-green-100 text-green-900 font-semibold py-1 border border-gray-300 text-center ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
+                {d.day}
+              </td>
+            ))}
+            <td className="bg-amber-300 text-amber-900 font-bold py-1 border border-gray-400 text-center">TOTAL</td>
+          </tr>
+          <tr>
+            <td className="bg-red-200 text-red-900 font-bold px-2 py-1 border border-gray-400 text-center">New Regis</td>
+            {days.map(d => (
+              <td key={d.day} className={`bg-red-50 text-red-900 py-1 border border-gray-300 text-center font-medium tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
+                {d.new_regis || ''}
+              </td>
+            ))}
+            <td className="bg-amber-200 text-amber-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalNew}</td>
+          </tr>
+          <tr>
+            <td className="bg-blue-200 text-blue-900 font-bold px-2 py-1 border border-gray-400 text-center">New Deposit</td>
+            {days.map(d => (
+              <td key={d.day} className={`bg-blue-50 text-blue-900 py-1 border border-gray-300 text-center font-medium tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
+                {d.depo_regis || ''}
+              </td>
+            ))}
+            <td className="bg-amber-200 text-amber-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalDepo}</td>
+          </tr>
+          <tr>
+            <td className="bg-lime-200 text-lime-900 font-bold px-2 py-1 border border-gray-400 text-center">Persentase</td>
+            {days.map(d => {
+              const total = (d.new_regis || 0) + (d.depo_regis || 0)
+              const p = total > 0 ? ((d.depo_regis / total) * 100).toFixed(1) + '%' : ''
+              return (
+                <td key={d.day} className={`bg-lime-50 text-lime-900 py-1 border border-gray-300 text-center tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
+                  {p}
                 </td>
-              ))}
-              <td className="bg-green-300 text-green-900 font-bold py-1 border border-gray-400 text-center">TOTAL</td>
-            </tr>
-            <tr>
-              <td className="bg-red-200 text-red-900 font-bold px-2 py-1 border border-gray-400 text-center">New Regis</td>
-              {days.map(d => (
-                <td key={d.day} className={`bg-red-50 text-red-900 py-1 border border-gray-300 text-center font-medium tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
-                  {d.new_regis || ''}
-                </td>
-              ))}
-              <td className="bg-red-300 text-red-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalNew}</td>
-            </tr>
-            <tr>
-              <td className="bg-blue-200 text-blue-900 font-bold px-2 py-1 border border-gray-400 text-center">New Deposit</td>
-              {days.map(d => (
-                <td key={d.day} className={`bg-blue-50 text-blue-900 py-1 border border-gray-300 text-center font-medium tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
-                  {d.depo_regis || ''}
-                </td>
-              ))}
-              <td className="bg-blue-300 text-blue-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalDepo}</td>
-            </tr>
-            <tr>
-              <td className="bg-lime-200 text-lime-900 font-bold px-2 py-1 border border-gray-400 text-center">Persentase</td>
-              {days.map(d => {
-                const total = (d.new_regis || 0) + (d.depo_regis || 0)
-                const p = total > 0 ? ((d.depo_regis / total) * 100).toFixed(1) + '%' : ''
-                return (
-                  <td key={d.day} className={`bg-lime-50 text-lime-900 py-1 border border-gray-300 text-center tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
-                    {p}
-                  </td>
-                )
-              })}
-              <td className="bg-lime-300 text-lime-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalRatio}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              )
+            })}
+            <td className="bg-amber-200 text-amber-900 font-bold py-1 border border-gray-400 text-center tabular-nums">{totalRatio}</td>
+          </tr>
+        </tbody>
+      </table>
 
       {/* Bar chart */}
-      <div className="p-4 bg-gray-50" style={{ height: 320 }}>
+      <div className="p-4 bg-gray-50" style={{ height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -188,14 +235,3 @@ function ReferralCard({ item, todayDay }) {
   )
 }
 
-function Stat({ label, value, subValue, color }) {
-  return (
-    <div className="bg-white px-4 py-3">
-      <div className="text-xs text-gray-500 uppercase tracking-wide">{label}</div>
-      <div className={`text-2xl font-bold ${color} mt-1 tabular-nums`}>
-        {value}
-        {subValue && <span className="text-sm text-gray-400 ml-2">{subValue}</span>}
-      </div>
-    </div>
-  )
-}
