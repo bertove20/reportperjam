@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { referrals as referralsApi, admin } from '../../api/client'
+import { referrals as referralsApi, admin, actions } from '../../api/client'
 
 export default function ReferralsDashboard() {
   const today = new Date().toISOString().slice(0, 10)
@@ -101,13 +101,13 @@ export default function ReferralsDashboard() {
       )}
 
       {visibleGroups.map((group) => (
-        <BrandGroup key={group.brand_key} group={group} todayDay={todayDay} />
+        <BrandGroup key={group.brand_key} group={group} todayDay={todayDay} divisionId={divisionId} refetch={refetch} />
       ))}
     </div>
   )
 }
 
-function BrandGroup({ group, todayDay }) {
+function BrandGroup({ group, todayDay, divisionId, refetch }) {
   // Brand-level totals across all referrals
   const brandTotals = useMemo(() => {
     let totalNew = 0
@@ -146,16 +146,17 @@ function BrandGroup({ group, todayDay }) {
 
       <div className="divide-y">
         {group.referrals.map((ref) => (
-          <ReferralRow key={ref.referral_code} item={ref} todayDay={todayDay} />
+          <ReferralRow key={ref.referral_code} item={ref} todayDay={todayDay} divisionId={divisionId} refetch={refetch} />
         ))}
       </div>
     </div>
   )
 }
 
-function ReferralRow({ item, todayDay }) {
-  const { referral_code, display_name, referral_type, days } = item
+function ReferralRow({ item, todayDay, divisionId, refetch }) {
+  const { referral_code, display_name, referral_type, days, year, month } = item
   const typeLabel = referral_type || 'SUNTIK TRAFFIC'
+  const [backfilling, setBackfilling] = useState(false)
 
   // Totals
   const totalNew = days.reduce((a, d) => a + (d.new_regis || 0), 0)
@@ -163,6 +164,26 @@ function ReferralRow({ item, todayDay }) {
   const totalRatio = (totalNew + totalDepo) > 0
     ? ((totalDepo / (totalNew + totalDepo)) * 100).toFixed(1) + '%'
     : '—'
+
+  // Detect missing days (before today, have zero data but should have some)
+  const missingDays = days.filter(d => d.day < todayDay && d.new_regis === 0 && d.depo_regis === 0).map(d => d.day)
+
+  const handleBackfillMissing = async () => {
+    if (missingDays.length === 0) return
+    const mm = String(month).padStart(2, '0')
+    const firstMissing = `${year}-${mm}-${String(Math.min(...missingDays)).padStart(2, '0')}`
+    const lastMissing = `${year}-${mm}-${String(Math.max(...missingDays)).padStart(2, '0')}`
+    if (!confirm(`Backfill ${missingDays.length} hari kosong (${firstMissing} s/d ${lastMissing}) untuk referral ini?\n\nTidak kirim ke Telegram, hanya isi data.`)) return
+    setBackfilling(true)
+    try {
+      await actions.referralBackfill(firstMissing, lastMissing, divisionId || null)
+      alert(`Backfill dimulai (${firstMissing} s/d ${lastMissing}). Refresh beberapa saat lagi.`)
+      setTimeout(() => { refetch?.(); setBackfilling(false) }, 5000)
+    } catch (err) {
+      alert(`Gagal: ${err.message}`)
+      setBackfilling(false)
+    }
+  }
 
   // Chart data
   const chartData = days.map(d => ({
@@ -180,7 +201,13 @@ function ReferralRow({ item, todayDay }) {
           <span className="bg-green-200 text-green-900 text-xs font-bold font-mono px-2 py-0.5 rounded">ID REFF : {referral_code}</span>
           {display_name && <span className="text-xs text-gray-600">{display_name}</span>}
         </div>
-        <div className="flex gap-4 text-xs">
+        <div className="flex items-center gap-4 text-xs">
+          {missingDays.length > 0 && (
+            <button onClick={handleBackfillMissing} disabled={backfilling}
+              className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold hover:bg-amber-200 disabled:opacity-50">
+              {backfilling ? 'Loading...' : `Backfill ${missingDays.length} hari kosong`}
+            </button>
+          )}
           <span className="text-red-600 font-bold tabular-nums">New: {totalNew}</span>
           <span className="text-blue-600 font-bold tabular-nums">Depo: {totalDepo}</span>
           <span className="text-green-600 font-bold tabular-nums">{totalRatio}</span>
