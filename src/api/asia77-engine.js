@@ -286,22 +286,48 @@ export async function fetchAsia77DepositHistory(brandKey, domain, dateDDMMYYYY, 
 
 /**
  * Keepalive — panggil setiap 15 menit supaya session tidak expire
+ * Panggil 2 endpoint: /clearMessage + /sse/user/balance
+ * untuk memastikan session benar-benar aktif di sisi panel.
+ *
+ * @returns {{ ok: boolean, error?: string }}
  */
-export async function keepaliveAsia77(brandKey, domain, cookieHeaderParam = null) {
+export async function keepaliveAsia77(brandKey, domain, cookieHeaderParam = null, userId = 0) {
   const cookieHeader = getCookieHeader(brandKey, cookieHeaderParam);
-  if (!cookieHeader) return false;
+  if (!cookieHeader) return { ok: false, error: 'no cookie' };
+
+  const hgOpts = {
+    browsers: [{ name: 'chrome', minVersion: 120 }],
+    operatingSystems: ['macos'],
+  };
 
   try {
-    const response = await gotScraping.get(`https://${domain}/clearMessage`, {
+    // 1. clearMessage (ringan — menjaga session di cache)
+    await gotScraping.get(`https://${domain}/clearMessage`, {
       headers: { Cookie: cookieHeader },
-      headerGeneratorOptions: {
-        browsers: [{ name: 'chrome', minVersion: 120 }],
-        operatingSystems: ['macos'],
-      },
+      headerGeneratorOptions: hgOpts,
       timeout: { request: 15000 },
     });
-    return response.statusCode === 200;
-  } catch {
-    return false;
+
+    // 2. /sse/user/balance (berat — trigger session refresh seperti browser nyata)
+    const balResp = await gotScraping.post(`https://${domain}/sse/user/balance`, {
+      json: { userId: userId || 0, force: false },
+      headers: { Cookie: cookieHeader },
+      headerGeneratorOptions: hgOpts,
+      responseType: 'json',
+      timeout: { request: 15000 },
+    });
+
+    const body = balResp.body;
+    if (body?.ecErr === 0 || body?.ec === 0) {
+      return { ok: true };
+    }
+    // Session masih hidup tapi mungkin ada warning
+    if (typeof body === 'object' && body !== null) {
+      return { ok: true };
+    }
+
+    return { ok: false, error: `Unexpected response: ${typeof body === 'string' ? body.slice(0, 100) : JSON.stringify(body).slice(0, 100)}` };
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
 }

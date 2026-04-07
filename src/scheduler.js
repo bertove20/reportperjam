@@ -85,13 +85,43 @@ export async function startScheduler() {
     }
   }, { timezone: defaultTz }));
 
-  // ─── Keepalive: every 15 min ───
-  jobs.push(cron.schedule('*/15 * * * *', async () => {
+  // ─── Keepalive: every 10 min (lebih sering dari 15 untuk safety margin) ───
+  const keepaliveFailCounts = new Map(); // brandKey → consecutive fail count
+  jobs.push(cron.schedule('*/10 * * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
       const brands = (await getBrands(tenant.id)).filter(b => b.engine === 'asia77');
+      const failedBrands = [];
+
       for (const brand of brands) {
-        await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader);
+        const result = await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
+        const key = brand.key;
+
+        if (result.ok) {
+          keepaliveFailCounts.set(key, 0);
+        } else {
+          const count = (keepaliveFailCounts.get(key) || 0) + 1;
+          keepaliveFailCounts.set(key, count);
+          logger.warn({ brand: key, error: result.error, consecutiveFails: count }, 'Keepalive failed');
+
+          // Alert setelah 3x berturut-turut gagal (30 menit)
+          if (count === 3) {
+            failedBrands.push({ brand: brand.name || key, error: result.error });
+          }
+        }
+      }
+
+      // Kirim alert kalau ada brand yang gagal 3x berturut-turut
+      if (failedBrands.length > 0) {
+        const { sendAlert } = await import('./tim/tim-alert.js');
+        const lines = [
+          '⚠️ <b>KEEPALIVE FAILED — Cookie mungkin expired</b>',
+          '',
+          ...failedBrands.map(f => `❌ <b>${f.brand}</b>: ${f.error}`),
+          '',
+          '💡 Login ulang via Admin → Brands → Edit → paste cookie baru',
+        ];
+        sendAlert(lines.join('\n'), tenant.id).catch(() => {});
       }
     }
   }, { timezone: defaultTz }));
