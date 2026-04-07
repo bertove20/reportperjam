@@ -392,7 +392,50 @@ nano /opt/reportperjam/.env
 pm2 restart tim-report-bot
 ```
 
-### Cookie expired terus
+### Cookie expired terus / ec=undefined / IP not whitelisted
 Bot sudah ada keepalive setiap 15 menit. Jika masih expired:
 - Cek apakah IP VPS di-block oleh Cloudflare panel
 - Coba login ulang via admin panel
+
+### VPS terblokir panel (IPv6 not whitelisted)
+Gejala: semua brand error "Cookie expired (ec=undefined)", padahal cookie baru di-paste.
+Penyebab: VPS punya dual-stack IPv4+IPv6, panel asia77 hanya whitelist IPv4.
+
+```bash
+# Cek status IPv6
+cat /proc/sys/net/ipv6/conf/all/disable_ipv6
+# Output 0 = IPv6 masih aktif (masalah!)
+
+# Fix: disable IPv6
+sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sysctl -w net.ipv6.conf.default.disable_ipv6=1
+
+# Permanen (survive reboot)
+echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
+echo "net.ipv6.conf.default.disable_ipv6=1" >> /etc/sysctl.conf
+sysctl -p
+
+# Verifikasi pakai IPv4
+curl -4 -sI https://asia77cash.com | head -5
+
+# Restart bot
+pm2 restart tim-report-bot --update-env
+```
+
+### Login ke panel brand via SSH SOCKS tunnel (Zero Omega)
+Kalau panel blok IP lokal/kantor, pakai VPS sebagai proxy:
+
+```bash
+# Di terminal LOKAL Windows (bukan VPS!) — biarkan terbuka
+ssh -D 9090 -N -C root@213.163.201.225
+```
+
+Di browser:
+1. Install extension **Zero Omega** (Chrome/Edge)
+2. Buat profile: SOCKS5, Server: `localhost`, Port: `9090`
+3. Aktifkan profile → buka panel brand → login
+4. DevTools (F12) → Network → copy Cookie
+5. Admin panel → Brands → Edit → paste cookie → Save
+6. Selesai → matikan profile Zero Omega kembali ke [Direct]
+
+Verifikasi tunnel jalan: buka https://api.ipify.org → harus menunjukkan `213.163.201.225`
