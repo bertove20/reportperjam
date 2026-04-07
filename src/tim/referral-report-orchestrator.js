@@ -78,36 +78,7 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
           continue;
         }
 
-        const referralCodes = codes.map(c => c.referral_code);
-
-        // Fetch A: new members per referral
-        let newMembers = [];
-        try {
-          newMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
-            dateDDMMYYYY,
-            newmb: true,
-            referralCodes,
-            cookieHeader: brand.cookieHeader,
-          });
-        } catch (err) {
-          logger.error({ brand: brand.key, err: err.message }, 'Fetch new members failed');
-        }
-        await new Promise(r => setTimeout(r, 800));
-
-        // Fetch B: non-new members (deposit aktif)
-        let depoMembers = [];
-        try {
-          depoMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
-            dateDDMMYYYY,
-            newmb: false,
-            referralCodes,
-            cookieHeader: brand.cookieHeader,
-          });
-        } catch (err) {
-          logger.error({ brand: brand.key, err: err.message }, 'Fetch depo members failed');
-        }
-
-        // Count per referral
+        // Fetch per referral code satu-satu (API hanya support 1 refusnm per request)
         const refMap = new Map();
         for (const c of codes) {
           refMap.set(c.referral_code, {
@@ -116,14 +87,34 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
             new_regis: 0,
             depo_regis: 0,
           });
-        }
-        for (const m of newMembers) {
-          const key = m.referral;
-          if (refMap.has(key)) refMap.get(key).new_regis++;
-        }
-        for (const m of depoMembers) {
-          const key = m.referral;
-          if (refMap.has(key)) refMap.get(key).depo_regis++;
+
+          // Fetch A: new members untuk referral ini
+          try {
+            const newMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
+              dateDDMMYYYY,
+              newmb: true,
+              referralCodes: [c.referral_code],
+              cookieHeader: brand.cookieHeader,
+            });
+            refMap.get(c.referral_code).new_regis = newMembers.length;
+          } catch (err) {
+            logger.error({ brand: brand.key, ref: c.referral_code, err: err.message }, 'Fetch new members failed');
+          }
+          await new Promise(r => setTimeout(r, 500));
+
+          // Fetch B: non-new members (deposit aktif) untuk referral ini
+          try {
+            const depoMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
+              dateDDMMYYYY,
+              newmb: false,
+              referralCodes: [c.referral_code],
+              cookieHeader: brand.cookieHeader,
+            });
+            refMap.get(c.referral_code).depo_regis = depoMembers.length;
+          } catch (err) {
+            logger.error({ brand: brand.key, ref: c.referral_code, err: err.message }, 'Fetch depo members failed');
+          }
+          await new Promise(r => setTimeout(r, 500));
         }
 
         const refRows = Array.from(refMap.values());
