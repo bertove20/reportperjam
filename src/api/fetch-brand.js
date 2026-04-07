@@ -7,7 +7,7 @@
 
 import { fetchAsia77Daily, fetchAsia77Regis } from './asia77-engine.js';
 import { fetchSyntechDaily, fetchSyntechRegis } from './syntech-engine.js';
-import { upsertSnapshot } from '../storage/postgres.js';
+import { upsertSnapshot, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
 import { sendFetchErrorAlert } from '../tim/tim-alert.js';
@@ -145,5 +145,66 @@ export async function fetchAllBrandsFinish(yesterdayDateStr, tenantId = null) {
       logger.error({ brand: brand.key, err: err.message }, 'FINISH fetch failed');
       insertLog('finish', brand.key, 'error', err.message, duration);
     }
+  }
+}
+
+/**
+ * Auto-recovery: setelah fetch jam ini berhasil, cek jam-jam sebelumnya hari ini
+ * yang kosong (karena cookie expired / downtime) dan isi dengan data kumulatif saat ini.
+ *
+ * TRX: kumulatif dari dpapp (karena panel hanya beri angka kumulatif)
+ * REGIS: kumulatif dari memberlist count
+ *
+ * Jam yang kosong akan diisi = data jam terdekat yang ada di bawahnya (interpolasi forward-fill).
+ */
+export async function recoverMissingHours(dateStr, currentHour, tenantId = null) {
+  const brands = await getBrands(tenantId);
+  let totalRecovered = 0;
+
+  for (const brand of brands) {
+    try {
+      // Cari jam yang sudah ada data hari ini
+      const existing = await queryRows(
+        'SELECT hour, deposit_accepted_count AS trx, regis_total AS regis FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND tenant_id = $3 AND hour <= $4 ORDER BY hour ASC',
+        [brand.key, dateStr, tenantId || 1, currentHour]
+      );
+      const existingHours = new Set(existing.map(r => r.hour));
+
+      // Cari jam yang hilang (1..currentHour-1, karena currentHour baru saja di-fetch)
+      const missingHours = [];
+      for (let h = 1; h < currentHour; h++) {
+        if (!existingHours.has(h)) missingHours.push(h);
+      }
+
+      if (missingHours.length === 0) continue;
+
+      // Untuk setiap jam yang hilang, isi dengan data dari jam terdekat sebelumnya
+      // atau jam terdekat sesudahnya (forward/backward fill)
+      for (const missH of missingHours) {
+        // Cari jam terdekat SETELAH missH yang punya data
+        const nextRow = existing.find(r => r.hour > missH);
+        // Cari jam terdekat SEBELUM missH yang punya data
+        const prevRows = existing.filter(r => r.hour < missH);
+        const prevRow = prevRows.length > 0 ? prevRows[prevRows.length - 1] : null;
+
+        // Pakai data terdekat yang tersedia (prefer next karena kumulatif naik)
+        const sourceRow = prevRow || nextRow;
+        if (!sourceRow) continue;
+
+        await upsertSnapshot(brand.key, dateStr, missH, sourceRow.trx, sourceRow.regis, tenantId);
+        totalRecovered++;
+      }
+
+      if (missingHours.length > 0) {
+        logger.info({ brand: brand.key, recovered: missingHours, source: 'auto-recovery' }, 'Missing hours filled');
+        insertLog('recovery', brand.key, 'success', `Filled hours: ${missingHours.join(',')}`, 0, tenantId);
+      }
+    } catch (err) {
+      logger.warn({ brand: brand.key, err: err.message }, 'Auto-recovery failed for brand');
+    }
+  }
+
+  if (totalRecovered > 0) {
+    logger.info({ totalRecovered, date: dateStr }, 'Auto-recovery complete');
   }
 }

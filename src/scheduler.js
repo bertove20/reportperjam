@@ -7,7 +7,7 @@
 import cron from 'node-cron';
 import { queryRows } from './storage/postgres.js';
 import { getSetting } from './storage/settings-store.js';
-import { fetchAllBrands, fetchAllBrandsFinish } from './api/fetch-brand.js';
+import { fetchAllBrands, fetchAllBrandsFinish, recoverMissingHours } from './api/fetch-brand.js';
 import { sendTimReports } from './tim/tim-orchestrator.js';
 import { sendReferralReports } from './tim/referral-report-orchestrator.js';
 import { cleanOldLogs } from './storage/log-store.js';
@@ -44,12 +44,16 @@ export async function startScheduler() {
     }
   }, { timezone: defaultTz }));
 
-  // ─── :05 Report (jam 1-23) ───
+  // ─── :05 Recovery + Report (jam 1-23) ───
   jobs.push(cron.schedule('5 1-23 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
       try {
         const now = DateTime.now();
+
+        // Auto-recovery: isi jam kosong sebelum report supaya laporan lengkap
+        await recoverMissingHours(now.toDateStr(), now.hour, tenant.id);
+
         await sendTimReports(now.hour, now.toDateStr(), now.yesterday().toDateStr(), null, tenant.id);
       } catch (err) {
         logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant report failed');
