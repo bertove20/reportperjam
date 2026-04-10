@@ -154,12 +154,12 @@ export function buildTimHtml(brand, data, dateStr, currentHour) {
       <th style="padding:4px 6px;text-align:right;">KMRN</th>
       <th style="padding:4px 6px;text-align:right;">HARI INI</th>
       <th style="padding:4px 6px;text-align:right;">/JAM</th>
-      <th style="padding:4px 6px;text-align:right;">SISA</th>
+      <th style="padding:4px 6px;text-align:right;">SELISIH KMRN</th>
       <th style="padding:4px 6px;text-align:center;background:#e5e7eb;">JAM</th>
       <th style="padding:4px 6px;text-align:right;">KMRN</th>
       <th style="padding:4px 6px;text-align:right;">HARI INI</th>
       <th style="padding:4px 6px;text-align:right;">/JAM</th>
-      <th style="padding:4px 6px;text-align:right;">SISA</th>
+      <th style="padding:4px 6px;text-align:right;">SELISIH KMRN</th>
     </tr>
   </thead>
   <tbody>
