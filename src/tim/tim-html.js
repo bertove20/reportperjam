@@ -104,8 +104,9 @@ export function buildTimHtml(brand, data, dateStr, currentHour) {
   <div style="display:flex;align-items:center;gap:10px;">
     ${brand.logo ? `<img src="${brand.logo}" style="height:36px;border-radius:6px;">` : ''}
     <div>
-      <div style="font-weight:bold;font-size:14px;">${dateFormatted}</div>
-      <div style="font-size:11px;opacity:0.8;">Update ${hourLabel} WIB</div>
+      <div style="font-weight:bold;font-size:16px;letter-spacing:0.5px;text-transform:uppercase;">${brand.name}</div>
+      <div style="font-weight:600;font-size:12px;opacity:0.95;">${dateFormatted}</div>
+      <div style="font-size:10px;opacity:0.75;">Update ${hourLabel} WIB</div>
     </div>
   </div>
   <div style="background:rgba(255,255,255,0.2);padding:4px 10px;border-radius:4px;font-size:12px;font-weight:bold;">${dateShort}</div>
