@@ -94,8 +94,8 @@ export function buildTimHtml(brand, data, dateStr, currentHour) {
 <head><meta charset="UTF-8"><style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: -apple-system, 'Segoe UI', sans-serif; width:650px; background:white; }
-  table { border-collapse:collapse; width:100%; }
-  th { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; }
+  table { border-collapse:collapse; width:100%; table-layout:fixed; }
+  th { font-size:10px; text-transform:uppercase; letter-spacing:0.5px; vertical-align:bottom; }
 </style></head>
 <body>
 
@@ -144,6 +144,17 @@ export function buildTimHtml(brand, data, dateStr, currentHour) {
 
 <!-- TABLE -->
 <table style="margin-top:6px;">
+  <colgroup>
+    <col style="width:70px;">
+    <col style="width:70px;">
+    <col style="width:70px;">
+    <col style="width:70px;">
+    <col style="width:90px;">
+    <col style="width:70px;">
+    <col style="width:70px;">
+    <col style="width:70px;">
+    <col style="width:70px;">
+  </colgroup>
   <thead>
     <tr style="background:#f1f5f9;">
       <th colspan="4" style="padding:4px;text-align:center;color:${brand.primary};border-bottom:2px solid ${brand.primary};">INDEX TRX</th>
@@ -151,15 +162,15 @@ export function buildTimHtml(brand, data, dateStr, currentHour) {
       <th colspan="4" style="padding:4px;text-align:center;color:${brand.primary};border-bottom:2px solid ${brand.primary};">INDEX REGIS</th>
     </tr>
     <tr style="background:#f8fafc;">
-      <th style="padding:4px 6px;text-align:right;">KMRN</th>
-      <th style="padding:4px 6px;text-align:right;">HARI INI</th>
-      <th style="padding:4px 6px;text-align:right;">/JAM</th>
-      <th style="padding:4px 6px;text-align:right;">SELISIH KMRN</th>
-      <th style="padding:4px 6px;text-align:center;background:#e5e7eb;">JAM</th>
-      <th style="padding:4px 6px;text-align:right;">KMRN</th>
-      <th style="padding:4px 6px;text-align:right;">HARI INI</th>
-      <th style="padding:4px 6px;text-align:right;">/JAM</th>
-      <th style="padding:4px 6px;text-align:right;">SELISIH KMRN</th>
+      <th style="padding:4px 4px;text-align:right;">KMRN</th>
+      <th style="padding:4px 4px;text-align:right;">HARI INI</th>
+      <th style="padding:4px 4px;text-align:right;">SELISIH<br>/JAM</th>
+      <th style="padding:4px 4px;text-align:right;">SELISIH<br>KMRN</th>
+      <th style="padding:4px 4px;text-align:center;background:#e5e7eb;">JAM</th>
+      <th style="padding:4px 4px;text-align:right;">KMRN</th>
+      <th style="padding:4px 4px;text-align:right;">HARI INI</th>
+      <th style="padding:4px 4px;text-align:right;">SELISIH<br>/JAM</th>
+      <th style="padding:4px 4px;text-align:right;">SELISIH<br>KMRN</th>
     </tr>
   </thead>
   <tbody>
