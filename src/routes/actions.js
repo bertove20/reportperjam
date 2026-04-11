@@ -307,6 +307,9 @@ export default async function actionRoutes(app) {
   // body: { rows: [{brand, date, hour, trx, regis}, ...] }
   // Bulk import hourly snapshot dari CSV upload (dry-run-able client-side first).
   // Force upsert — selalu overwrite data existing untuk slot (brand, date, hour) yang sama.
+  //
+  // Partial update: trx atau regis boleh null → kolom yg null akan ambil nilai
+  // existing dari DB (preserve). Kedua null = baris di-tolak (tidak ada perubahan).
   app.post('/api/actions/import-snapshots', async (request, reply) => {
     const tid = request.tenantId;
     const { rows } = request.body || {};
@@ -335,8 +338,12 @@ export default async function actionRoutes(app) {
         const brand = String(row.brand || '').trim();
         const date = String(row.date || '').trim();
         const hour = parseInt(row.hour, 10);
-        const trx = parseInt(row.trx, 10);
-        const regis = parseInt(row.regis, 10);
+
+        // trx & regis sengaja boleh null → preserve existing
+        const trxRaw = row.trx;
+        const regisRaw = row.regis;
+        const hasTrx = trxRaw !== null && trxRaw !== undefined && trxRaw !== '';
+        const hasRegis = regisRaw !== null && regisRaw !== undefined && regisRaw !== '';
 
         // Validate brand
         if (!brand) { errors.push({ line: lineNo, error: 'brand kosong' }); continue; }
@@ -357,14 +364,38 @@ export default async function actionRoutes(app) {
           continue;
         }
 
-        // Validate trx & regis
-        if (!Number.isFinite(trx) || trx < 0) {
-          errors.push({ line: lineNo, error: `trx "${row.trx}" harus angka >= 0` });
+        // Validate trx & regis (kalau di-set)
+        let trx = null;
+        let regis = null;
+        if (hasTrx) {
+          trx = parseInt(trxRaw, 10);
+          if (!Number.isFinite(trx) || trx < 0) {
+            errors.push({ line: lineNo, error: `trx "${trxRaw}" harus angka >= 0 atau kosong` });
+            continue;
+          }
+        }
+        if (hasRegis) {
+          regis = parseInt(regisRaw, 10);
+          if (!Number.isFinite(regis) || regis < 0) {
+            errors.push({ line: lineNo, error: `regis "${regisRaw}" harus angka >= 0 atau kosong` });
+            continue;
+          }
+        }
+
+        // Keduanya kosong → tidak ada gunanya update
+        if (!hasTrx && !hasRegis) {
+          errors.push({ line: lineNo, error: 'trx dan regis kedua-duanya kosong, tidak ada yang di-update' });
           continue;
         }
-        if (!Number.isFinite(regis) || regis < 0) {
-          errors.push({ line: lineNo, error: `regis "${row.regis}" harus angka >= 0` });
-          continue;
+
+        // Partial update: kalau salah satu null, ambil dari existing snapshot
+        if (trx === null || regis === null) {
+          const existing = await queryOne(
+            'SELECT deposit_accepted_count, regis_total FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
+            [brand, date, hour, tid]
+          );
+          if (trx === null) trx = existing?.deposit_accepted_count ?? 0;
+          if (regis === null) regis = existing?.regis_total ?? 0;
         }
 
         await forceUpsertSnapshot(brand, date, hour, trx, regis, tid);

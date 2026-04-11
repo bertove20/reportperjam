@@ -67,9 +67,12 @@ export default function ReportView() {
   const brandColor = currentBrand?.primary_color || '#dc2626'
 
   // ─── CSV Import helpers ───
+  // Parser CSV dengan dukungan partial update:
+  //   trx kosong  → null (preserve TRX existing di DB)
+  //   regis kosong → null (preserve REGIS existing di DB)
+  //   keduanya kosong → baris di-skip dengan error (tidak ada gunanya update)
+  //   eksplisit "0" → di-overwrite jadi 0 (anggap data nyata "tidak ada aktivitas")
   const parseCsv = (text) => {
-    // Simple CSV parser: split by line, split by comma. Trim cells.
-    // Skip blank lines & comment lines (starting with #).
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'))
     if (lines.length === 0) return { rows: [], errors: [{ line: 0, error: 'File kosong' }] }
 
@@ -90,23 +93,42 @@ export default function ReportView() {
         errors.push({ line: lineNo, error: `Hanya ${cells.length} kolom, butuh ${required.length}` })
         continue
       }
-      const row = {
-        brand: cells[idx.brand],
-        date: cells[idx.date],
-        hour: cells[idx.hour],
-        trx: cells[idx.trx],
-        regis: cells[idx.regis],
+
+      const brand = cells[idx.brand]
+      const date = cells[idx.date]
+      const hourRaw = cells[idx.hour]
+      const trxRaw = cells[idx.trx]
+      const regisRaw = cells[idx.regis]
+
+      // Brand wajib
+      if (!brand) { errors.push({ line: lineNo, error: 'brand kosong' }); continue }
+      // Date wajib + format strict
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { errors.push({ line: lineNo, error: `date "${date}" harus YYYY-MM-DD` }); continue }
+      // Hour wajib + range 0-24
+      const h = parseInt(hourRaw, 10)
+      if (!Number.isFinite(h) || h < 0 || h > 24) { errors.push({ line: lineNo, error: `hour "${hourRaw}" harus 0-24` }); continue }
+
+      // trx & regis: empty = null (preserve), angka = update, invalid = error
+      let trx = null
+      let regis = null
+      if (trxRaw !== '') {
+        const t = parseInt(trxRaw, 10)
+        if (!Number.isFinite(t) || t < 0) { errors.push({ line: lineNo, error: `trx "${trxRaw}" harus angka >= 0 atau kosong` }); continue }
+        trx = t
       }
-      // Quick validation client-side (server akan validasi ulang)
-      if (!row.brand) { errors.push({ line: lineNo, error: 'brand kosong' }); continue }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date)) { errors.push({ line: lineNo, error: `date "${row.date}" harus YYYY-MM-DD` }); continue }
-      const h = parseInt(row.hour, 10)
-      if (!Number.isFinite(h) || h < 0 || h > 24) { errors.push({ line: lineNo, error: `hour "${row.hour}" harus 0-24` }); continue }
-      const t = parseInt(row.trx, 10)
-      if (!Number.isFinite(t) || t < 0) { errors.push({ line: lineNo, error: `trx "${row.trx}" harus angka >= 0` }); continue }
-      const r = parseInt(row.regis, 10)
-      if (!Number.isFinite(r) || r < 0) { errors.push({ line: lineNo, error: `regis "${row.regis}" harus angka >= 0` }); continue }
-      rows.push(row)
+      if (regisRaw !== '') {
+        const r = parseInt(regisRaw, 10)
+        if (!Number.isFinite(r) || r < 0) { errors.push({ line: lineNo, error: `regis "${regisRaw}" harus angka >= 0 atau kosong` }); continue }
+        regis = r
+      }
+      // Keduanya kosong = baris tidak ada gunanya
+      if (trx === null && regis === null) {
+        errors.push({ line: lineNo, error: 'trx dan regis kedua-duanya kosong, tidak ada yang di-update' })
+        continue
+      }
+
+      // Kirim trx/regis sebagai number atau null (bukan string) supaya server tidak salah parse
+      rows.push({ brand, date, hour: h, trx, regis })
     }
     return { rows, errors }
   }
@@ -126,20 +148,35 @@ export default function ReportView() {
   }
 
   const handleDownloadTemplate = () => {
+    const sampleBrand = brand || 'P138'
     const templateLines = [
       '# Template Import Hourly Snapshot',
       '# Format: brand,date,hour,trx,regis',
-      '# - brand: brand key (mis. P138, BRS11)',
-      '# - date: tanggal YYYY-MM-DD',
+      '#',
+      '# - brand: brand key (mis. P138, BRS11) — harus terdaftar di Brands',
+      '# - date: tanggal YYYY-MM-DD (mis. 2026-04-10 = 10 April 2026)',
       '# - hour: 0-24 (24 = FINISH / end-of-day)',
-      '# - trx: jumlah deposit accepted (angka >= 0)',
-      '# - regis: jumlah registrasi (angka >= 0)',
-      '# Baris yang dimulai # diabaikan, hapus contoh di bawah dan ganti dengan data kamu',
+      '# - trx: jumlah deposit accepted (angka >= 0) atau KOSONG = jangan update',
+      '# - regis: jumlah registrasi (angka >= 0) atau KOSONG = jangan update',
+      '#',
+      '# Slot (brand, date, hour) yang sama akan ditimpa.',
+      '# Baris yang dimulai # diabaikan (komentar).',
+      '#',
+      '# Contoh penggunaan:',
+      '#   - Update TRX & REGIS sekaligus → isi keduanya',
+      '#   - Update TRX saja → kosongkan kolom regis (tetap pakai koma!)',
+      '#   - Update REGIS saja → kosongkan kolom trx',
+      '#   - Eksplisit 0 (memang tidak ada aktivitas) → tulis "0"',
+      '#',
+      '# Hapus baris contoh di bawah dan ganti dengan data kamu.',
+      '',
       'brand,date,hour,trx,regis',
-      `${brand || 'P138'},2026-04-10,1,1500,80`,
-      `${brand || 'P138'},2026-04-10,2,2200,140`,
-      `${brand || 'P138'},2026-04-10,3,3000,200`,
-      `${brand || 'P138'},2026-04-10,24,12500,580`,
+      `${sampleBrand},2026-04-10,1,1500,80`,
+      `${sampleBrand},2026-04-10,2,2200,140`,
+      `${sampleBrand},2026-04-10,3,3000,`,
+      `${sampleBrand},2026-04-10,4,,180`,
+      `${sampleBrand},2026-04-10,5,0,0`,
+      `${sampleBrand},2026-04-10,24,12500,580`,
     ]
     const blob = new Blob([templateLines.join('\n')], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -403,12 +440,20 @@ export default function ReportView() {
               <div className="font-mono text-[11px] mb-2">brand,date,hour,trx,regis</div>
               <ul className="list-disc list-inside space-y-0.5">
                 <li><b>brand</b> = brand key (mis. P138, BRS11)</li>
-                <li><b>date</b> = YYYY-MM-DD</li>
+                <li><b>date</b> = YYYY-MM-DD (mis. 2026-04-10 = 10 April 2026)</li>
                 <li><b>hour</b> = 0-24 (24 = FINISH / end-of-day)</li>
-                <li><b>trx</b>, <b>regis</b> = angka (≥ 0)</li>
-                <li>Data existing untuk slot (brand, date, hour) yang sama akan ditimpa</li>
-                <li>Baris yang dimulai dengan <code>#</code> akan diabaikan (komentar)</li>
+                <li><b>trx</b>, <b>regis</b> = angka (≥ 0) atau <b>kosong</b> kalau tidak ingin di-update</li>
               </ul>
+              <div className="mt-2 bg-white/60 border border-blue-300 rounded p-2">
+                <div className="font-semibold mb-0.5">Partial update:</div>
+                <ul className="list-disc list-inside space-y-0.5">
+                  <li><code>P138,2026-04-10,5,3000,200</code> → update TRX & REGIS</li>
+                  <li><code>P138,2026-04-10,5,3000,</code> → update TRX saja, REGIS existing tetap</li>
+                  <li><code>P138,2026-04-10,5,,200</code> → update REGIS saja, TRX existing tetap</li>
+                  <li><code>P138,2026-04-10,5,0,0</code> → eksplisit set 0 (tidak ada aktivitas)</li>
+                </ul>
+              </div>
+              <div className="mt-2 text-[11px]">Baris yang dimulai dengan <code>#</code> diabaikan (komentar).</div>
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
@@ -465,8 +510,12 @@ export default function ReportView() {
                           <td className="px-2 py-1 font-mono">{r.brand}</td>
                           <td className="px-2 py-1 font-mono">{r.date}</td>
                           <td className="px-2 py-1 text-right tabular-nums">{r.hour}</td>
-                          <td className="px-2 py-1 text-right tabular-nums">{r.trx}</td>
-                          <td className="px-2 py-1 text-right tabular-nums">{r.regis}</td>
+                          <td className="px-2 py-1 text-right tabular-nums">
+                            {r.trx === null ? <span className="text-gray-400 italic">(skip)</span> : r.trx}
+                          </td>
+                          <td className="px-2 py-1 text-right tabular-nums">
+                            {r.regis === null ? <span className="text-gray-400 italic">(skip)</span> : r.regis}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
