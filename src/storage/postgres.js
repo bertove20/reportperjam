@@ -36,17 +36,21 @@ export async function initDatabase() {
 
   pool = new Pool({ connectionString, max: 20 });
 
-  // Set timezone WIB (UTC+7) untuk setiap connection baru — gunakan callback untuk avoid concurrent query
-  pool.on('connect', (client) => {
-    client.query("SET timezone = 'Asia/Phnom_Penh'", (err) => {
-      if (err) logger.warn({ err: err.message }, 'Failed to set timezone on new connection');
-    });
+  // Set timezone WIB (UTC+7) untuk setiap connection baru.
+  // pool.on('connect') menahan client sampai handler-nya selesai sebelum
+  // dipinjamkan ke caller, jadi kita HARUS pakai await — kalau pakai callback
+  // (fire-and-forget) client akan diserahkan ke caller sementara SET timezone
+  // masih jalan, dan pg akan throw "client is already executing a query".
+  pool.on('connect', async (client) => {
+    try {
+      await client.query("SET timezone = 'Asia/Phnom_Penh'");
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Failed to set timezone on new connection');
+    }
   });
 
   try {
     await pool.query('SELECT NOW()');
-    // Set timezone untuk semua query di session ini
-    await pool.query("SET timezone = 'Asia/Phnom_Penh'");
   } catch (err) {
     logger.error({ err: err.message }, 'PostgreSQL connection failed');
     throw err;
