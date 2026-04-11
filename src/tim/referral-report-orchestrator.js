@@ -24,6 +24,7 @@ import { logger } from '../logger.js';
 
 const DELAY_BETWEEN_DIVISIONS = 3000;
 const DELAY_BETWEEN_BRANDS = 1500;
+const DELAY_BETWEEN_REFERRAL_SENDS = 1500;
 
 function toDDMMYYYY(dateStr) {
   const [y, m, d] = dateStr.split('-');
@@ -154,20 +155,39 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
           logger.warn({ err: err.message, division: div.division_name }, 'Get monthly breakdown failed');
         }
 
-        // Render + send
-        const html = buildReferralReportHtml({
-          divisionName: div.division_name,
-          date: targetDate,
-          monthly,
-        });
-        const png = await renderPng(html, { width: 1720 });
-        const caption = `📋 Referral Report │ ${div.division_name} │ ${targetDate}`;
-
-        await sendPhoto(div.tg_group_id, png, caption, tenantId);
+        // Kirim per referral — 1 gambar = 1 pesan.
+        // Ini mencegah satu gambar raksasa kena PHOTO_INVALID_DIMENSIONS
+        // dan bikin pesan lebih mudah dibaca di Telegram.
+        // Kalau monthly kosong, kirim 1 fallback "empty" agar group tetap dapat notifikasi.
+        const items = monthly.length > 0 ? monthly : [null];
+        let sentCount = 0;
+        for (const item of items) {
+          try {
+            const html = buildReferralReportHtml({
+              divisionName: div.division_name,
+              date: targetDate,
+              monthly: item ? [item] : [],
+            });
+            const png = await renderPng(html, { width: 1720 });
+            const caption = item
+              ? `📋 ${div.division_name} │ ${item.brand_name} │ ${item.display_name || item.referral_code} │ ${targetDate}`
+              : `📋 Referral Report │ ${div.division_name} │ ${targetDate} (tidak ada referral aktif)`;
+            await sendPhoto(div.tg_group_id, png, caption, tenantId);
+            sentCount++;
+          } catch (err) {
+            logger.error({
+              division: div.division_name,
+              brand: item?.brand_name,
+              ref: item?.referral_code,
+              err: err.message,
+            }, 'Send per-referral card failed');
+          }
+          await new Promise(r => setTimeout(r, DELAY_BETWEEN_REFERRAL_SENDS));
+        }
 
         const duration = Date.now() - start;
-        logger.info({ division: div.division_name, brands: brandReports.length }, 'Referral report sent');
-        await insertLog('referral-report', div.division_name, 'success', `${brandReports.length} brands`, duration);
+        logger.info({ division: div.division_name, total: monthly.length, sent: sentCount }, 'Referral report sent (per-referral)');
+        await insertLog('referral-report', div.division_name, 'success', `${sentCount}/${monthly.length || 0} cards sent`, duration);
       }
     } catch (err) {
       const duration = Date.now() - start;
