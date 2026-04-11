@@ -24,6 +24,7 @@ export default function Referrals() {
   })
   const [backfillDivision, setBackfillDivision] = useState('')
   const [backfillStatus, setBackfillStatus] = useState('')
+  const [sendingId, setSendingId] = useState(null)
 
   const { data: rows = [] } = useQuery({ queryKey: ['referrals'], queryFn: () => referralsApi.list() })
   const { data: brandList = [] } = useQuery({ queryKey: ['brands-all'], queryFn: () => brandsApi.list(false) })
@@ -75,6 +76,19 @@ export default function Referrals() {
       alert('Referral report dikirim. Cek grup Telegram divisi beberapa saat lagi.')
     } catch (err) {
       alert(`Gagal: ${err.message}`)
+    }
+  }
+
+  const handleSendSingle = async (r) => {
+    if (!confirm(`Kirim referral "${r.referral_code}" (${r.brand_key}) untuk tanggal ${sendDate}?\n\nAkan fetch data dari panel brand lalu kirim ke Telegram group divisi ${r.division_name || '-'}.`)) return
+    setSendingId(r.id)
+    try {
+      await actions.referralReportSingle(r.id, sendDate)
+      alert(`Referral "${r.referral_code}" berhasil dikirim. Cek grup Telegram divisi.`)
+    } catch (err) {
+      alert(`Gagal kirim: ${err.message}`)
+    } finally {
+      setSendingId(null)
     }
   }
 
@@ -181,7 +195,17 @@ export default function Referrals() {
 
       <CrudTable title="Referral Codes" columns={columns} rows={rows}
         onAdd={openAdd} onEdit={openEdit}
-        onDelete={(r) => { if (confirm(`Delete referral ${r.referral_code}?`)) deleteMut.mutate(r.id) }} />
+        onDelete={(r) => { if (confirm(`Delete referral ${r.referral_code}?`)) deleteMut.mutate(r.id) }}
+        renderExtraActions={(r) => (
+          <button
+            onClick={() => handleSendSingle(r)}
+            disabled={sendingId === r.id || !r.is_active}
+            className="px-2 py-0.5 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={r.is_active ? `Kirim referral ini ke Telegram (tanggal: ${sendDate})` : 'Referral nonaktif — aktifkan dulu untuk bisa dikirim'}
+          >
+            {sendingId === r.id ? 'Mengirim...' : 'Kirim'}
+          </button>
+        )} />
 
       {modal && (
         <FormModal title={editing ? 'Edit Referral' : 'Add Referral'}

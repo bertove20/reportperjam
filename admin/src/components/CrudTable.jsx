@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 
-export default function CrudTable({ title, columns, rows, onAdd, onEdit, onDelete, addLabel = '+ Add' }) {
+export default function CrudTable({ title, columns, rows, onAdd, onEdit, onDelete, addLabel = '+ Add', renderExtraActions = null }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -25,7 +25,7 @@ export default function CrudTable({ title, columns, rows, onAdd, onEdit, onDelet
                   {col.label}
                 </th>
               ))}
-              {(onEdit || onDelete) && <th className="px-3 py-2 text-right text-xs text-gray-500">Actions</th>}
+              {(onEdit || onDelete || renderExtraActions) && <th className="px-3 py-2 text-right text-xs text-gray-500">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -36,8 +36,9 @@ export default function CrudTable({ title, columns, rows, onAdd, onEdit, onDelet
                     {col.render ? col.render(row) : row[col.key]}
                   </td>
                 ))}
-                {(onEdit || onDelete) && (
-                  <td className="px-3 py-2 text-right space-x-1">
+                {(onEdit || onDelete || renderExtraActions) && (
+                  <td className="px-3 py-2 text-right space-x-1 whitespace-nowrap">
+                    {renderExtraActions && renderExtraActions(row)}
                     {onEdit && <button onClick={() => onEdit(row)} className="px-2 py-0.5 text-xs bg-gray-100 rounded hover:bg-gray-200">Edit</button>}
                     {onDelete && <button onClick={() => { if (confirm('Delete?')) onDelete(row) }} className="px-2 py-0.5 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">Del</button>}
                   </td>

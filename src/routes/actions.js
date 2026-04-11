@@ -10,7 +10,7 @@
 import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
 import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia77DepositHistory } from '../api/asia77-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
-import { sendReferralReports, backfillReferralSnapshots } from '../tim/referral-report-orchestrator.js';
+import { sendReferralReports, backfillReferralSnapshots, sendSingleReferralReport } from '../tim/referral-report-orchestrator.js';
 import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
@@ -81,6 +81,26 @@ export default async function actionRoutes(app) {
     });
 
     return { success: true, message: `Referral report started for ${targetDate}` };
+  });
+
+  // POST /api/actions/referral-report-single
+  // body: { referralId, date? }
+  // Kirim report untuk 1 referral saja (tombol per-row di admin panel)
+  app.post('/api/actions/referral-report-single', async (request, reply) => {
+    const tid = request.tenantId;
+    const { referralId, date } = request.body || {};
+    if (!referralId) return reply.code(400).send({ error: 'referralId required' });
+
+    const targetDate = date || DateTime.now().yesterday().toDateStr();
+    logger.info({ tenantId: tid, referralId, targetDate }, 'Single referral report triggered');
+
+    try {
+      await sendSingleReferralReport(referralId, targetDate, tid);
+      return { success: true, message: `Referral report sent for ${targetDate}` };
+    } catch (err) {
+      logger.error({ referralId, err: err.message }, 'Single referral report failed');
+      return reply.code(500).send({ success: false, error: err.message });
+    }
   });
 
   // POST /api/actions/referral-backfill

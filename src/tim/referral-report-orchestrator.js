@@ -14,7 +14,9 @@ import {
   getReferralsGroupedByDivision,
   upsertReferralDailySnapshot,
   getReferralMonthlyBreakdown,
+  getReferralCode,
 } from '../storage/referral-store.js';
+import { queryOne } from '../storage/postgres.js';
 import { fetchMembersFiltered } from '../api/asia77-engine.js';
 import { buildReferralReportHtml } from './referral-report-html.js';
 import { renderPng } from './tim-renderer.js';
@@ -224,4 +226,122 @@ export async function backfillReferralSnapshots(startDate, endDate, tenantId, di
     }
   }
   logger.info({ tenantId, dates: dates.length }, 'Referral backfill complete');
+}
+
+/**
+ * Kirim referral report untuk SATU referral saja (manual dari admin panel).
+ *
+ * Flow:
+ *   1. Load referral row + division (buat dapat tg_group_id)
+ *   2. Fetch members (new + depo) untuk tanggal target → upsert snapshot
+ *   3. Ambil monthly breakdown untuk divisi, filter ke item yg matching
+ *   4. Render HTML 1 card → sendPhoto (auto fallback sendDocument kalau terlalu besar)
+ *
+ * @param {number} referralId
+ * @param {string} targetDate — YYYY-MM-DD
+ * @param {number} tenantId
+ * @returns {Promise<{ok: boolean, sent?: boolean, error?: string}>}
+ */
+export async function sendSingleReferralReport(referralId, targetDate, tenantId) {
+  const start = Date.now();
+  const ref = await getReferralCode(referralId, tenantId);
+  if (!ref) throw new Error(`Referral ${referralId} not found`);
+  if (!ref.division_id) throw new Error(`Referral ${ref.referral_code} tidak punya division — set division dulu`);
+
+  const division = await queryOne(
+    'SELECT id, name, tg_group_id FROM divisions WHERE id = $1 AND tenant_id = $2',
+    [ref.division_id, tenantId]
+  );
+  if (!division) throw new Error(`Division ${ref.division_id} not found`);
+  if (!division.tg_group_id) throw new Error(`Division "${division.name}" tidak punya tg_group_id`);
+
+  const brands = await getBrands(tenantId);
+  const brand = brands.find(b => b.key === ref.brand_key);
+  if (!brand) throw new Error(`Brand ${ref.brand_key} not found / not configured`);
+
+  const dateDDMMYYYY = toDDMMYYYY(targetDate);
+
+  try {
+    // Fetch A: new members untuk referral ini
+    let newCount = 0;
+    try {
+      const newMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
+        dateDDMMYYYY,
+        newmb: true,
+        referralCodes: [ref.referral_code],
+        cookieHeader: brand.cookieHeader,
+      });
+      newCount = newMembers.length;
+    } catch (err) {
+      logger.error({ brand: brand.key, ref: ref.referral_code, err: err.message }, 'Fetch new members failed (single)');
+    }
+    await new Promise(r => setTimeout(r, 500));
+
+    // Fetch B: non-new members (deposit aktif)
+    let depoCount = 0;
+    try {
+      const depoMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
+        dateDDMMYYYY,
+        newmb: false,
+        referralCodes: [ref.referral_code],
+        cookieHeader: brand.cookieHeader,
+      });
+      depoCount = depoMembers.length;
+    } catch (err) {
+      logger.error({ brand: brand.key, ref: ref.referral_code, err: err.message }, 'Fetch depo members failed (single)');
+    }
+
+    // Upsert snapshot untuk tanggal target
+    try {
+      await upsertReferralDailySnapshot(
+        tenantId, ref.division_id, brand.key, ref.referral_code, targetDate, newCount, depoCount
+      );
+    } catch (err) {
+      logger.warn({ err: err.message, brand: brand.key, ref: ref.referral_code }, 'Snapshot upsert failed (single)');
+    }
+
+    // Ambil monthly breakdown divisi lalu filter ke 1 item
+    const monthly = await getReferralMonthlyBreakdown(tenantId, ref.division_id, targetDate);
+    const item = monthly.find(m => m.brand_key === brand.key && m.referral_code === ref.referral_code);
+    if (!item) {
+      throw new Error(`Referral ${ref.referral_code} tidak muncul di monthly breakdown — mungkin non-active`);
+    }
+
+    // Render + send
+    const html = buildReferralReportHtml({
+      divisionName: division.name,
+      date: targetDate,
+      monthly: [item],
+    });
+    const png = await renderPng(html, { width: 1720 });
+    const caption = `📋 ${division.name} │ ${item.brand_name} │ ${item.display_name || item.referral_code} │ ${targetDate}`;
+    await sendPhoto(division.tg_group_id, png, caption, tenantId);
+
+    const duration = Date.now() - start;
+    logger.info({
+      referralId, brand: brand.key, ref: ref.referral_code, division: division.name, date: targetDate,
+    }, 'Single referral report sent');
+    await insertLog(
+      'referral-report',
+      division.name,
+      'success',
+      `${brand.key}/${ref.referral_code} · ${targetDate}`,
+      duration
+    );
+
+    return { ok: true, sent: true };
+  } catch (err) {
+    const duration = Date.now() - start;
+    logger.error({
+      referralId, brand: brand.key, ref: ref.referral_code, err: err.message,
+    }, 'Single referral report failed');
+    await insertLog(
+      'referral-report',
+      division.name,
+      'error',
+      `${brand.key}/${ref.referral_code}: ${err.message}`,
+      duration
+    );
+    throw err;
+  }
 }
