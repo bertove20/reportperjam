@@ -9,6 +9,7 @@
 
 import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
 import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia77DepositHistory } from '../api/asia77-engine.js';
+import { fetchSyntechDaily, fetchSyntechRegis, fetchSyntechPlayersWithTime } from '../api/syntech-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
 import { sendReferralReports, backfillReferralSnapshots, sendSingleReferralReport } from '../tim/referral-report-orchestrator.js';
 import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
@@ -138,20 +139,16 @@ export default async function actionRoutes(app) {
     for (const brand of targetBrands) {
       const start = Date.now();
       try {
-        if (brand.engine !== 'asia77') {
-          results.push({ brand: brand.key, success: false, message: 'Backfill hanya support asia77 engine' });
-          continue;
-        }
-
         const saved = [];
+        const maxHour = isToday ? now.hour : 23;
 
         // ═══════════════════════════════════════
-        // BACKFILL: REGIS per jam dari /memberlist join_time
-        // TRX hanya dari auto-fetch setiap jam (tidak di-backfill)
+        // ENGINE: ASIA77
+        // REGIS per jam dari /memberlist join_time
+        // TRX hanya dari auto-fetch (tidak di-backfill)
         // ═══════════════════════════════════════
-        {
+        if (brand.engine === 'asia77') {
           const targetDDMMYYYY = formatDDMMYYYY(targetDate);
-          const maxHour = isToday ? now.hour : 23;
 
           // 1. Fetch member list → REGIS per jam
           const members = await fetchAllMembersWithTime(
@@ -205,47 +202,69 @@ export default async function actionRoutes(app) {
               saved.push(`FINISH ${yesterdayStr}: TRX=${fmtNum(ydTrx)} REGIS=${fmtNum(ydRegis)}`);
             }
           }
-        }
 
-        if (false) {
-          const targetDDMMYYYY = formatDDMMYYYY(targetDate);
+        // ═══════════════════════════════════════
+        // ENGINE: SYNTECH
+        // REGIS per jam dari /services/players (parse created_at)
+        // TRX hanya dari snapshot kumulatif terkini (tidak di-backfill)
+        // ═══════════════════════════════════════
+        } else if (brand.engine === 'syntech') {
+          const config = {
+            domain: brand.domain,
+            user: brand.user,
+            pass: brand.pass,
+            pin: brand.pin,
+            apiKey: brand.apiKey,
+            hash: brand.hash,
+          };
 
-          // Fetch semua member + join_time
-          const members = await fetchAllMembersWithTime(
-            brand.key, brand.domain, targetDDMMYYYY, brand.userId, brand.cookieHeader
-          );
-          const totalRegis = members.length;
-          const hourlyRegis = buildHourlyRegis(members);
+          const startISO = `${targetDate}T00:00:00.000+07:00`;
+          const endISO = `${targetDate}T23:59:59.999+07:00`;
 
-          saved.push(`Fetch ${fmtNum(totalRegis)} member dari /memberlist`);
+          // 1. Fetch semua player di tanggal target → REGIS per jam dari created_at
+          const players = await fetchSyntechPlayersWithTime(config, startISO, endISO);
+          const totalRegis = players.length;
+          const hourlyRegis = buildHourlyRegisFromCreatedAt(players);
+          saved.push(`Fetch ${totalRegis} players dari /services/players`);
 
-          // Simpan REGIS per jam (kumulatif)
-          // TRX: pakai data yang sudah ada, atau null jika tidak ada
-          let regisFilled = 0;
-          for (let h = 1; h <= 23; h++) {
-            const cumulativeRegis = hourlyRegis[h] || 0;
-
+          // 2. Simpan REGIS per jam (pertahankan TRX yang sudah ada dari auto-fetch)
+          let filled = 0;
+          for (let h = 1; h <= maxHour; h++) {
+            const regis = hourlyRegis[h] || 0;
             const existing = await queryOne(
               'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = $3 AND tenant_id = $4',
               [brand.key, targetDate, h, tid]
             );
-
             const trx = existing?.trx > 0 ? existing.trx : null;
-            await upsertSnapshotNullable(brand.key, targetDate, h, trx, cumulativeRegis, tid);
-            regisFilled++;
+            await upsertSnapshotNullable(brand.key, targetDate, h, trx, regis, tid);
+            filled++;
           }
-          saved.push(`REGIS per jam: 23 jam terisi`);
+          saved.push(`REGIS per jam: ${filled} jam terisi`);
 
-          // Simpan FINISH
-          // TRX: hanya tersedia jika target = kemarin (dari yddpapp)
-          let finishTrx = null;
-          if (targetDate === yesterdayStr) {
-            const daily = await fetchAsia77Daily(brand.key, brand.domain, brand.cookieHeader);
-            finishTrx = daily.yddpapp || null;
+          // 3. Simpan FINISH (TRX dari snapshot end-of-day kalau target bukan hari ini)
+          if (!isToday) {
+            const existingFinish = await queryOne(
+              'SELECT deposit_accepted_count as trx FROM hourly_snapshots WHERE brand = $1 AND date = $2 AND hour = 24 AND tenant_id = $3',
+              [brand.key, targetDate, tid]
+            );
+            const finishTrx = existingFinish?.trx > 0 ? existingFinish.trx : null;
+            await upsertSnapshotNullable(brand.key, targetDate, 24, finishTrx, totalRegis, tid);
+            saved.push(`FINISH: TRX=${finishTrx ? fmtNum(finishTrx) : 'N/A'} REGIS=${fmtNum(totalRegis)}`);
           }
 
-          await upsertSnapshotNullable(brand.key, targetDate, 24, finishTrx, totalRegis, tid);
-          saved.push(`FINISH: TRX=${finishTrx ? fmtNum(finishTrx) : 'N/A'} REGIS=${fmtNum(totalRegis)}`);
+          // 4. Jika hari ini, ambil snapshot kumulatif terkini untuk jam aktif
+          if (isToday && now.hour > 0) {
+            const dateISO = `${todayStr}T${String(now.hour).padStart(2, '0')}:00:00+07:00`;
+            const daily = await fetchSyntechDaily(config, dateISO);
+            const todayTrx = daily.deposit_action_accepted_count || 0;
+            const currentRegis = hourlyRegis[now.hour] || totalRegis;
+            await upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, currentRegis, tid);
+            saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(currentRegis)}`);
+          }
+
+        } else {
+          results.push({ brand: brand.key, success: false, message: `Backfill belum support engine ${brand.engine}` });
+          continue;
         }
 
         const duration = Date.now() - start;
@@ -320,6 +339,37 @@ function buildHourlyRegis(members) {
   for (const m of members) {
     const match = m.join_time?.match(/(\d{2}):(\d{2}):(\d{2})$/);
     if (match) counts[parseInt(match[1])]++;
+  }
+
+  const cumulative = {};
+  let total = 0;
+  for (let h = 1; h <= 23; h++) {
+    total += counts[h - 1];
+    cumulative[h] = total;
+  }
+  total += counts[23];
+  cumulative[24] = total;
+
+  return cumulative;
+}
+
+/**
+ * Versi untuk syntech: parse `created_at` ISO 8601 (e.g. "2026-04-11T07:34:21.000+07:00")
+ * → kumulatif REGIS per jam, dalam zona Asia/Phnom_Penh (UTC+7).
+ *
+ * Hour-of-day diambil setelah konversi ke UTC+7 supaya match dengan logic asia77
+ * (yang ambil jam dari string "DD-MM-YYYY HH:MM:SS" yang sudah dalam timezone panel).
+ */
+function buildHourlyRegisFromCreatedAt(players) {
+  const counts = new Array(24).fill(0);
+  for (const p of players) {
+    if (!p?.created_at) continue;
+    const d = new Date(p.created_at);
+    if (isNaN(d.getTime())) continue;
+    // Adjust ke UTC+7
+    const utc7 = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+    const hour = utc7.getUTCHours();
+    counts[hour]++;
   }
 
   const cumulative = {};

@@ -163,3 +163,50 @@ export async function fetchSyntechRegis(config, startISO, endISO) {
   const result = await fetchWithAuth(url, config);
   return result.meta?.total || 0;
 }
+
+/**
+ * Fetch SEMUA player di rentang tanggal dengan field created_at — untuk backfill
+ * REGIS per jam (mirip fetchAllMembersWithTime di asia77).
+ *
+ * Paginate sampai meta.total atau halaman kosong.
+ *
+ * @param {object} config - { domain, user, pass, pin, apiKey, hash }
+ * @param {string} startISO - start date ISO (e.g. '2026-04-11T00:00:00.000+07:00')
+ * @param {string} endISO - end date ISO   (e.g. '2026-04-11T23:59:59.999+07:00')
+ * @returns {Array<{created_at: string, ...}>}
+ */
+export async function fetchSyntechPlayersWithTime(config, startISO, endISO) {
+  const limit = 200;
+  const players = [];
+  let page = 1;
+
+  while (true) {
+    const params = new URLSearchParams({
+      page: String(page),
+      sort: 'created_at:asc',
+      limit: String(limit),
+      start_date: startISO,
+      end_date: endISO,
+      referred: 'false',
+      without_bank_account: 'false',
+    });
+    const url = `https://${config.domain}/services/players?${params.toString()}`;
+    const result = await fetchWithAuth(url, config);
+
+    const batch = result?.data || [];
+    players.push(...batch);
+
+    if (batch.length < limit) break;
+    page++;
+
+    // Safety cap supaya tidak loop tak terbatas kalau API misbehave
+    if (page > 100) {
+      logger.warn({ domain: config.domain, page }, 'Syntech players pagination cap hit');
+      break;
+    }
+
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  return players;
+}
