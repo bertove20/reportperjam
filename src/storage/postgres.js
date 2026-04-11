@@ -34,19 +34,16 @@ export async function initDatabase() {
   const connectionString = process.env.DATABASE_URL ||
     `postgresql://${process.env.PG_USER || 'postgres'}:${process.env.PG_PASS || 'postgres'}@${process.env.PG_HOST || 'localhost'}:${process.env.PG_PORT || 5432}/${process.env.PG_DB || 'reportbot'}`;
 
-  pool = new Pool({ connectionString, max: 20 });
-
-  // Set timezone WIB (UTC+7) untuk setiap connection baru.
-  // pool.on('connect') menahan client sampai handler-nya selesai sebelum
-  // dipinjamkan ke caller, jadi kita HARUS pakai await — kalau pakai callback
-  // (fire-and-forget) client akan diserahkan ke caller sementara SET timezone
-  // masih jalan, dan pg akan throw "client is already executing a query".
-  pool.on('connect', async (client) => {
-    try {
-      await client.query("SET timezone = 'Asia/Phnom_Penh'");
-    } catch (err) {
-      logger.warn({ err: err.message }, 'Failed to set timezone on new connection');
-    }
+  // Set timezone WIB (UTC+7) lewat startup parameter PostgreSQL.
+  // Cara ini di-handle saat handshake — server set timezone SEBELUM
+  // koneksi dipinjamkan ke caller, jadi tidak ada race window seperti
+  // kalau pakai pool.on('connect') + client.query() (yang bikin pg
+  // memuntahkan DeprecationWarning karena query SET tabrakan dengan
+  // query app yang dijalankan caller di koneksi yang sama).
+  pool = new Pool({
+    connectionString,
+    max: 20,
+    options: '-c timezone=Asia/Phnom_Penh',
   });
 
   try {
