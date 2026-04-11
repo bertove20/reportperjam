@@ -73,6 +73,19 @@ export async function cleanOldLogs(daysToKeep = 7) {
 }
 
 /**
+ * Hapus semua log dari bulan-bulan sebelumnya (dipanggil tanggal 1 tiap bulan).
+ * Yang tersisa hanya log dari bulan kalender berjalan.
+ *
+ * date_trunc('month', NOW()) = jam 00:00:00 di tanggal 1 bulan berjalan (sesuai timezone DB).
+ */
+export async function cleanLogsBeforeCurrentMonth() {
+  const result = await query(
+    `DELETE FROM job_logs WHERE created_at < date_trunc('month', NOW())`
+  );
+  return result.rowCount;
+}
+
+/**
  * Stats per brand (untuk dashboard)
  */
 export async function getLogStats(tenantId = null) {

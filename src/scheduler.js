@@ -10,7 +10,7 @@ import { getSetting } from './storage/settings-store.js';
 import { fetchAllBrands, fetchAllBrandsFinish, recoverMissingHours } from './api/fetch-brand.js';
 import { sendTimReports } from './tim/tim-orchestrator.js';
 import { sendReferralReports } from './tim/referral-report-orchestrator.js';
-import { cleanOldLogs } from './storage/log-store.js';
+import { cleanLogsBeforeCurrentMonth } from './storage/log-store.js';
 import { keepaliveAsia77 } from './api/asia77-engine.js';
 import { getBrands } from './tim/brand-configs.js';
 import { DateTime } from './utils/datetime.js';
@@ -126,10 +126,16 @@ export async function startScheduler() {
     }
   }, { timezone: defaultTz }));
 
-  // ─── Weekly cleanup: setiap Senin jam 03:00, hapus log > 7 hari ───
-  jobs.push(cron.schedule('0 3 * * 1', async () => {
-    const deleted = await cleanOldLogs(7);
-    if (deleted > 0) logger.info({ deleted }, 'Weekly log cleanup: old logs deleted');
+  // ─── Monthly cleanup: tanggal 1 jam 00:30, hapus semua log dari bulan lalu & sebelumnya ───
+  // Waktu 00:30 dipilih supaya dijalankan setelah cron FINISH (00:05)
+  // selesai dan sebelum fetch hourly (01:00) mulai.
+  jobs.push(cron.schedule('30 0 1 * *', async () => {
+    try {
+      const deleted = await cleanLogsBeforeCurrentMonth();
+      logger.info({ deleted }, 'Monthly log cleanup: logs from previous months deleted');
+    } catch (err) {
+      logger.error({ err: err.message }, 'Monthly log cleanup failed');
+    }
   }, { timezone: defaultTz }));
 
   logger.info('Multi-tenant scheduler started');
