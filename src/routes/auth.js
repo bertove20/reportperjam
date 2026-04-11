@@ -36,7 +36,6 @@ export default async function authRoutes(app) {
       full_name: user.full_name,
       division_id: user.division_id,
       tenant_id: user.tenant_id,
-      is_platform_admin: user.is_platform_admin,
     }, { expiresIn: '7d' });
 
     return {
@@ -48,7 +47,6 @@ export default async function authRoutes(app) {
         full_name: user.full_name,
         division_id: user.division_id,
         tenant_id: user.tenant_id,
-        is_platform_admin: user.is_platform_admin,
         permissions,
       },
       tenant: request.tenant ? { id: request.tenant.id, name: request.tenant.name, slug: request.tenant.slug } : null,
@@ -59,7 +57,7 @@ export default async function authRoutes(app) {
   app.get('/api/auth/me', async (request) => {
     const permissions = await getUserPermissions(request.user.id);
     const user = await queryOne(
-      'SELECT id, username, role, full_name, division_id, tenant_id, is_platform_admin FROM users WHERE id = $1',
+      'SELECT id, username, role, full_name, division_id, tenant_id FROM users WHERE id = $1',
       [request.user.id]
     );
     return {

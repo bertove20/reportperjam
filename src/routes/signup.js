@@ -60,7 +60,6 @@ export default async function signupRoutes(app) {
       tenant_id: tenantId,
       division_id: div.rows[0].id,
       full_name: full_name || company_name + ' Admin',
-      is_platform_admin: 0,
     }, { expiresIn: '7d' });
 
     logger.info({ tenantId, slug, username }, 'New tenant registered');
