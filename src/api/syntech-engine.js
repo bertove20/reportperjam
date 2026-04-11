@@ -165,6 +165,73 @@ export async function fetchSyntechRegis(config, startISO, endISO) {
 }
 
 /**
+ * Fetch player list dengan filter referral + new/non-new — untuk referral report.
+ * Mirror dari fetchMembersFiltered di asia77, tapi pakai filter param syntech:
+ *
+ *   referred=true&referred_by=<code>  → filter ke referral specific
+ *   total_deposit=eq0                  → "New Player"   (belum pernah deposit)
+ *   total_deposit=gt0                  → "Non-New Player" (sudah deposit)
+ *   (tidak set total_deposit)          → semua player
+ *
+ * @param {object} config - { domain, user, pass, pin, apiKey, hash }
+ * @param {object} opts
+ * @param {string} opts.startISO - start date ISO
+ * @param {string} opts.endISO - end date ISO
+ * @param {boolean|null} opts.newPlayer - true = New Player only, false = Non-New only, null = both
+ * @param {Array<string>} [opts.referralCodes] - filter referral codes (panel hanya support 1 per request)
+ * @returns {Array<player>}
+ */
+export async function fetchSyntechMembersFiltered(config, opts) {
+  const { startISO, endISO, newPlayer, referralCodes } = opts;
+  const limit = 200;
+  const players = [];
+
+  // Panel cuma support 1 referred_by per request — kalau multiple, loop satu per satu
+  const codes = (referralCodes && referralCodes.length > 0) ? referralCodes : [null];
+
+  for (const code of codes) {
+    let page = 1;
+    while (true) {
+      const params = new URLSearchParams({
+        page: String(page),
+        sort: 'created_at:asc',
+        limit: String(limit),
+        start_date: startISO,
+        end_date: endISO,
+        without_bank_account: 'false',
+      });
+      if (code) {
+        params.set('referred', 'true');
+        params.set('referred_by', code);
+      }
+      if (newPlayer === true) {
+        params.set('total_deposit', 'eq0');
+      } else if (newPlayer === false) {
+        params.set('total_deposit', 'gt0');
+      }
+
+      const url = `https://${config.domain}/services/players?${params.toString()}`;
+      const result = await fetchWithAuth(url, config);
+
+      const batch = result?.data || [];
+      players.push(...batch);
+
+      if (batch.length < limit) break;
+      page++;
+
+      if (page > 100) {
+        logger.warn({ domain: config.domain, page, code }, 'Syntech filtered pagination cap hit');
+        break;
+      }
+
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+
+  return players;
+}
+
+/**
  * Fetch SEMUA player di rentang tanggal dengan field created_at — untuk backfill
  * REGIS per jam (mirip fetchAllMembersWithTime di asia77).
  *

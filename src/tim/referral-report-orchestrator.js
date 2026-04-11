@@ -18,6 +18,7 @@ import {
 } from '../storage/referral-store.js';
 import { queryOne } from '../storage/postgres.js';
 import { fetchMembersFiltered } from '../api/asia77-engine.js';
+import { fetchSyntechMembersFiltered } from '../api/syntech-engine.js';
 import { buildReferralReportHtml } from './referral-report-html.js';
 import { renderPng } from './tim-renderer.js';
 import { sendPhoto } from './tim-sender.js';
@@ -32,6 +33,46 @@ const DELAY_BETWEEN_GROUP_COPIES = 400;
 function toDDMMYYYY(dateStr) {
   const [y, m, d] = dateStr.split('-');
   return `${d}-${m}-${y}`;
+}
+
+/**
+ * Engine-agnostic fetch untuk referral filter.
+ * Dispatch ke implementasi engine yang sesuai dan return list member.
+ *
+ * @param {object} brand - dari getBrands(), harus include engine, domain, credentials
+ * @param {string} targetDate - YYYY-MM-DD
+ * @param {boolean} newOnly - true = New Player only, false = Non-New only
+ * @param {string} referralCode - kode referral spesifik
+ * @returns {Promise<Array>} list member (count yang dipakai = .length)
+ */
+async function fetchReferralMembers(brand, targetDate, newOnly, referralCode) {
+  if (brand.engine === 'asia77') {
+    return fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
+      dateDDMMYYYY: toDDMMYYYY(targetDate),
+      newmb: newOnly,
+      referralCodes: [referralCode],
+      cookieHeader: brand.cookieHeader,
+    });
+  }
+
+  if (brand.engine === 'syntech') {
+    const config = {
+      domain: brand.domain,
+      user: brand.user,
+      pass: brand.pass,
+      pin: brand.pin,
+      apiKey: brand.apiKey,
+      hash: brand.hash,
+    };
+    return fetchSyntechMembersFiltered(config, {
+      startISO: `${targetDate}T00:00:00.000+07:00`,
+      endISO: `${targetDate}T23:59:59.999+07:00`,
+      newPlayer: newOnly,
+      referralCodes: [referralCode],
+    });
+  }
+
+  throw new Error(`Engine ${brand.engine} belum support referral fetch`);
 }
 
 /**
@@ -88,7 +129,6 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
 
   const brands = await getBrands(tenantId);
   const brandByKey = new Map(brands.map(b => [b.key, b]));
-  const dateDDMMYYYY = toDDMMYYYY(targetDate);
 
   for (const div of divisions) {
     const groupIds = parseTgGroupIds(div.tg_group_id);
@@ -127,12 +167,7 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
 
           // Fetch A: new members untuk referral ini
           try {
-            const newMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
-              dateDDMMYYYY,
-              newmb: true,
-              referralCodes: [c.referral_code],
-              cookieHeader: brand.cookieHeader,
-            });
+            const newMembers = await fetchReferralMembers(brand, targetDate, true, c.referral_code);
             refMap.get(c.referral_code).new_regis = newMembers.length;
           } catch (err) {
             logger.error({ brand: brand.key, ref: c.referral_code, err: err.message }, 'Fetch new members failed');
@@ -141,12 +176,7 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
 
           // Fetch B: non-new members (deposit aktif) untuk referral ini
           try {
-            const depoMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
-              dateDDMMYYYY,
-              newmb: false,
-              referralCodes: [c.referral_code],
-              cookieHeader: brand.cookieHeader,
-            });
+            const depoMembers = await fetchReferralMembers(brand, targetDate, false, c.referral_code);
             refMap.get(c.referral_code).depo_regis = depoMembers.length;
           } catch (err) {
             logger.error({ brand: brand.key, ref: c.referral_code, err: err.message }, 'Fetch depo members failed');
@@ -295,18 +325,11 @@ export async function sendSingleReferralReport(referralId, targetDate, tenantId)
   const brand = brands.find(b => b.key === ref.brand_key);
   if (!brand) throw new Error(`Brand ${ref.brand_key} not found / not configured`);
 
-  const dateDDMMYYYY = toDDMMYYYY(targetDate);
-
   try {
     // Fetch A: new members untuk referral ini
     let newCount = 0;
     try {
-      const newMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
-        dateDDMMYYYY,
-        newmb: true,
-        referralCodes: [ref.referral_code],
-        cookieHeader: brand.cookieHeader,
-      });
+      const newMembers = await fetchReferralMembers(brand, targetDate, true, ref.referral_code);
       newCount = newMembers.length;
     } catch (err) {
       logger.error({ brand: brand.key, ref: ref.referral_code, err: err.message }, 'Fetch new members failed (single)');
@@ -316,12 +339,7 @@ export async function sendSingleReferralReport(referralId, targetDate, tenantId)
     // Fetch B: non-new members (deposit aktif)
     let depoCount = 0;
     try {
-      const depoMembers = await fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
-        dateDDMMYYYY,
-        newmb: false,
-        referralCodes: [ref.referral_code],
-        cookieHeader: brand.cookieHeader,
-      });
+      const depoMembers = await fetchReferralMembers(brand, targetDate, false, ref.referral_code);
       depoCount = depoMembers.length;
     } catch (err) {
       logger.error({ brand: brand.key, ref: ref.referral_code, err: err.message }, 'Fetch depo members failed (single)');
