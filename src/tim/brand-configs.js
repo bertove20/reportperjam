@@ -22,6 +22,7 @@ export async function getBrands(tenantId = null) {
         user: b.auth_user || null,
         pass: decrypt(b.auth_pass) || null,
         pin: decrypt(b.auth_pin) || null,
+        apiKey: decrypt(b.auth_api_key) || null,
         primary: b.primary_color || '#7c3aed',
         logo: b.logo_base64 || null,
         tenantId: b.tenant_id,

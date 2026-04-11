@@ -28,15 +28,16 @@ export async function getBrandById(id) {
 export async function createBrand(data) {
   const result = await query(`
     INSERT INTO report_brands (key, name, engine, domain, is_active, sort_order,
-      user_id, cookie_header, auth_user, auth_pass, auth_pin,
+      user_id, cookie_header, auth_user, auth_pass, auth_pin, auth_api_key,
       primary_color, logo_base64, tenant_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING *
   `, [
     data.key, data.name, data.engine, data.domain,
     data.is_active ?? 1, data.sort_order ?? 0,
     data.user_id ?? 0, data.cookie_header?.replace(/[\r\n]/g, '').trim() || null,
     data.auth_user ?? null, data.auth_pass ?? null, data.auth_pin ?? null,
+    data.auth_api_key ?? null,
     data.primary_color ?? '#7c3aed', data.logo_base64 ?? null,
     data.tenant_id ?? null,
   ]);
@@ -50,7 +51,7 @@ export async function updateBrand(key, data, tenantId = null) {
 
   const allowedFields = [
     'name', 'engine', 'domain', 'is_active', 'sort_order',
-    'user_id', 'cookie_header', 'auth_user', 'auth_pass', 'auth_pin',
+    'user_id', 'cookie_header', 'auth_user', 'auth_pass', 'auth_pin', 'auth_api_key',
     'primary_color', 'logo_base64'
   ];
 

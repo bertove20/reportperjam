@@ -19,7 +19,7 @@ export default function BrandForm() {
     key: '', name: '', engine: 'asia77', domain: '',
     is_active: 1, sort_order: 0,
     user_id: 0, cookie_header: '',
-    auth_user: '', auth_pass: '', auth_pin: '',
+    auth_user: '', auth_pass: '', auth_pin: '', auth_api_key: '',
     primary_color: '#7c3aed', logo_base64: '',
   })
   const [error, setError] = useState('')
@@ -44,6 +44,7 @@ export default function BrandForm() {
         auth_user: existing.auth_user || '',
         auth_pass: existing.auth_pass || '',
         auth_pin: existing.auth_pin || '',
+        auth_api_key: existing.auth_api_key || '',
         primary_color: existing.primary_color || '#7c3aed',
         logo_base64: existing.logo_base64 || '',
       })
@@ -165,6 +166,18 @@ export default function BrandForm() {
               <label className="block text-sm font-medium text-gray-700 mb-1">PIN</label>
               <input value={form.auth_pin} onChange={set('auth_pin')}
                 className="w-full border rounded px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                API Key (X-Data-Reference) <span className="text-gray-400 font-normal">— optional</span>
+              </label>
+              <input value={form.auth_api_key} onChange={set('auth_api_key')}
+                placeholder="892ed64c-1005-42b9-8940-55f487760660"
+                className="w-full border rounded px-3 py-2 text-sm font-mono" />
+              <p className="text-xs text-gray-400 mt-1">
+                Beberapa panel butuh header <code>x-data-reference</code>.
+                Cari di DevTools &gt; Network &gt; Request Headers saat login. Kosongkan kalau panel tidak butuh.
+              </p>
             </div>
           </div>
         )}

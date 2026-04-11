@@ -4,7 +4,8 @@
 
 import { getAllBrands, getBrandByKey, createBrand, updateBrand, deleteBrand, hardDeleteBrand, updateBrandCookie } from '../storage/brand-store.js';
 import { fetchAsia77Daily, fetchAsia77Regis } from '../api/asia77-engine.js';
-import { encrypt } from '../utils/crypto.js';
+import { fetchSyntechDaily, fetchSyntechRegis } from '../api/syntech-engine.js';
+import { encrypt, decrypt } from '../utils/crypto.js';
 import { DateTime } from '../utils/datetime.js';
 import { logger } from '../logger.js';
 import { tWhere } from '../middleware/tenant-scope.js';
@@ -26,6 +27,7 @@ export default async function brandRoutes(app) {
     // Mask sensitive fields
     if (brand.auth_pass) brand.auth_pass = '********';
     if (brand.auth_pin) brand.auth_pin = '****';
+    if (brand.auth_api_key) brand.auth_api_key = '********';
     return brand;
   });
 
@@ -45,6 +47,7 @@ export default async function brandRoutes(app) {
     // Encrypt sensitive fields
     if (data.auth_pass) data.auth_pass = encrypt(data.auth_pass);
     if (data.auth_pin) data.auth_pin = encrypt(data.auth_pin);
+    if (data.auth_api_key) data.auth_api_key = encrypt(data.auth_api_key);
 
     data.tenant_id = tid;
     const brand = await createBrand(data);
@@ -70,6 +73,11 @@ export default async function brandRoutes(app) {
       data.auth_pin = encrypt(data.auth_pin);
     } else {
       delete data.auth_pin;
+    }
+    if (data.auth_api_key && data.auth_api_key !== '********') {
+      data.auth_api_key = encrypt(data.auth_api_key);
+    } else {
+      delete data.auth_api_key;
     }
 
     const updated = await updateBrand(request.params.key, data, tid);
@@ -187,8 +195,29 @@ export default async function brandRoutes(app) {
         );
 
         return { success: true, engine: 'asia77', trx, regis, raw: daily };
+      } else if (brand.engine === 'syntech') {
+        const config = {
+          domain: brand.domain,
+          user: brand.auth_user,
+          pass: decrypt(brand.auth_pass),
+          pin: decrypt(brand.auth_pin),
+          apiKey: decrypt(brand.auth_api_key),
+        };
+
+        const dt = new DateTime();
+        const dateStr = dt.toDateStr();
+        const dateISO = `${dateStr}T${String(dt.hour).padStart(2, '0')}:00:00+07:00`;
+
+        const daily = await fetchSyntechDaily(config, dateISO);
+        const trx = daily.deposit_action_accepted_count || 0;
+
+        const startISO = `${dateStr}T00:00:00+07:00`;
+        const endISO = `${dateStr}T23:59:59+07:00`;
+        const regis = await fetchSyntechRegis(config, startISO, endISO);
+
+        return { success: true, engine: 'syntech', trx, regis, raw: daily };
       } else {
-        return { success: true, engine: 'syntech', message: 'Syntech test not implemented yet' };
+        return reply.code(400).send({ success: false, error: `Unknown engine: ${brand.engine}` });
       }
     } catch (err) {
       return reply.code(500).send({ success: false, error: err.message });
