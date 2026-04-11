@@ -15,19 +15,18 @@ function fmt(n) {
   return Number(n).toLocaleString('id-ID');
 }
 
-// Conversion rate: berapa persen dari new_regis yang sudah convert ke depositor.
-// depo_regis adalah subset dari new_regis (semantic baru), jadi rumusnya
-// depo / new, bukan depo / (new + depo).
+// Persentase: depo / (new + depo) — formula bisnis dari spreadsheet operator,
+// match dengan rumus =B7/(B7+B6) yang dipakai di Excel/Sheets manual.
 function pct(regis, depo) {
-  const r = regis || 0;
-  if (r === 0) return '';
-  return ((((depo || 0) / r) * 100)).toFixed(2) + '%';
+  const total = (regis || 0) + (depo || 0);
+  if (total === 0) return '';
+  return ((depo / total) * 100).toFixed(2) + '%';
 }
 
 function pctRaw(regis, depo) {
-  const r = regis || 0;
-  if (r === 0) return 0;
-  return ((depo || 0) / r) * 100;
+  const total = (regis || 0) + (depo || 0);
+  if (total === 0) return 0;
+  return (depo / total) * 100;
 }
 
 function escapeHtml(s) {
