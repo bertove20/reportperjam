@@ -12,7 +12,31 @@ async function getBotToken(tenantId = null) {
 }
 
 /**
- * Kirim foto ke Telegram group
+ * Kirim image sebagai document ke Telegram group.
+ * Dipakai sebagai fallback kalau sendPhoto kena dimension limit.
+ */
+export async function sendDocument(chatId, pngBuffer, filename = 'report.png', caption = '', tenantId = null) {
+  const token = await getBotToken(tenantId);
+  if (!token) throw new Error('TG_BOT_TOKEN not configured');
+
+  const url = `https://api.telegram.org/bot${token}/sendDocument`;
+  const formData = new FormData();
+  formData.append('chat_id', chatId);
+  formData.append('document', new Blob([pngBuffer], { type: 'image/png' }), filename);
+  if (caption) formData.append('caption', caption);
+
+  const response = await fetch(url, { method: 'POST', body: formData });
+  const result = await response.json();
+  if (!result.ok) {
+    throw new Error(`Telegram sendDocument: ${result.description || 'unknown'} (code=${result.error_code})`);
+  }
+  return result;
+}
+
+/**
+ * Kirim foto ke Telegram group.
+ * Auto fallback ke sendDocument kalau kena PHOTO_INVALID_DIMENSIONS
+ * (image terlalu tinggi/lebar — sum w+h > 10000 atau aspect ratio > 20:1).
  */
 export async function sendPhoto(chatId, pngBuffer, caption = '', tenantId = null) {
   const token = await getBotToken(tenantId);
@@ -35,6 +59,15 @@ export async function sendPhoto(chatId, pngBuffer, caption = '', tenantId = null
 
       lastError = `Telegram API: ${result.description || 'unknown error'} (code=${result.error_code})`;
       logger.warn({ chatId, attempt, error: lastError }, 'sendPhoto failed');
+
+      // Dimension-related errors — sendPhoto tidak akan pernah sukses, langsung fallback.
+      const desc = (result.description || '').toUpperCase();
+      if (desc.includes('PHOTO_INVALID_DIMENSIONS') ||
+          desc.includes('IMAGE_PROCESS_FAILED') ||
+          desc.includes('PHOTO_SAVE_FILE_INVALID')) {
+        logger.info({ chatId }, 'Falling back to sendDocument (image too large for sendPhoto)');
+        return await sendDocument(chatId, pngBuffer, 'report.png', caption, tenantId);
+      }
 
     } catch (err) {
       lastError = err.message;
