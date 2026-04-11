@@ -182,8 +182,9 @@ function BrandGroup({ group, todayDay, divisionId, refetch }) {
     }
     const avgNew = daysCount > 0 ? (totalNew / daysCount).toFixed(1) : '0'
     const avgDepo = daysCount > 0 ? (totalDepo / daysCount).toFixed(1) : '0'
-    const ratio = (totalNew + totalDepo) > 0
-      ? ((totalDepo / (totalNew + totalDepo)) * 100).toFixed(1) + '%'
+    // Conversion rate: depo adalah subset dari new (semantic baru), jadi depo / new
+    const ratio = totalNew > 0
+      ? ((totalDepo / totalNew) * 100).toFixed(1) + '%'
       : '—'
     return { totalNew, totalDepo, avgNew, avgDepo, ratio }
   }, [group])
@@ -222,8 +223,9 @@ function ReferralRow({ item, todayDay, divisionId, refetch }) {
   // Totals
   const totalNew = days.reduce((a, d) => a + (d.new_regis || 0), 0)
   const totalDepo = days.reduce((a, d) => a + (d.depo_regis || 0), 0)
-  const totalRatio = (totalNew + totalDepo) > 0
-    ? ((totalDepo / (totalNew + totalDepo)) * 100).toFixed(1) + '%'
+  // Conversion rate: depo adalah subset dari new (semantic baru), jadi depo / new
+  const totalRatio = totalNew > 0
+    ? ((totalDepo / totalNew) * 100).toFixed(1) + '%'
     : '—'
 
   // Detect missing days (before today, have zero data but should have some)
@@ -313,8 +315,9 @@ function ReferralRow({ item, todayDay, divisionId, refetch }) {
           <tr>
             <td className="bg-lime-200 text-lime-900 font-bold px-2 py-1 border border-gray-400 text-center">Persentase</td>
             {days.map(d => {
-              const total = (d.new_regis || 0) + (d.depo_regis || 0)
-              const p = total > 0 ? ((d.depo_regis / total) * 100).toFixed(1) + '%' : ''
+              const r = d.new_regis || 0
+              // Conversion rate: depo / new (depo adalah subset dari new)
+              const p = r > 0 ? (((d.depo_regis || 0) / r) * 100).toFixed(1) + '%' : ''
               return (
                 <td key={d.day} className={`bg-lime-50 text-lime-900 py-1 border border-gray-300 text-center tabular-nums ${d.day === todayDay ? 'ring-2 ring-amber-500 ring-inset' : ''}`}>
                   {p}

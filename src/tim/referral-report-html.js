@@ -15,16 +15,19 @@ function fmt(n) {
   return Number(n).toLocaleString('id-ID');
 }
 
+// Conversion rate: berapa persen dari new_regis yang sudah convert ke depositor.
+// depo_regis adalah subset dari new_regis (semantic baru), jadi rumusnya
+// depo / new, bukan depo / (new + depo).
 function pct(regis, depo) {
-  const total = (regis || 0) + (depo || 0);
-  if (total === 0) return '';
-  return ((depo / total) * 100).toFixed(2) + '%';
+  const r = regis || 0;
+  if (r === 0) return '';
+  return ((((depo || 0) / r) * 100)).toFixed(2) + '%';
 }
 
 function pctRaw(regis, depo) {
-  const total = (regis || 0) + (depo || 0);
-  if (total === 0) return 0;
-  return (depo / total) * 100;
+  const r = regis || 0;
+  if (r === 0) return 0;
+  return ((depo || 0) / r) * 100;
 }
 
 function escapeHtml(s) {
