@@ -39,17 +39,30 @@ function toDDMMYYYY(dateStr) {
  * Engine-agnostic fetch untuk referral filter.
  * Dispatch ke implementasi engine yang sesuai dan return list member.
  *
+ * Mode:
+ *   'new'  → semua player yang register di tanggal target via referral X
+ *            (= "berapa orang register hari itu", event-based)
+ *   'depo' → SUBSET dari 'new' yang sudah deposit minimal sekali
+ *            (= "berapa yang sudah convert dari register ke depositor")
+ *
+ * Untuk asia77, mode ini di-translate ke `newmb` flag (event-based, akurat
+ * per tanggal). Untuk syntech, mode 'depo' pakai `total_deposit=gt0` yang
+ * berbasis state SAAT INI — untuk backfill tanggal lalu, angka mencerminkan
+ * state hari ini bukan state historis. Daily cron jam 00:05 (fetch kemarin)
+ * tetap akurat karena delay-nya hanya ~24 jam.
+ *
  * @param {object} brand - dari getBrands(), harus include engine, domain, credentials
  * @param {string} targetDate - YYYY-MM-DD
- * @param {boolean} newOnly - true = New Player only, false = Non-New only
+ * @param {'new'|'depo'} mode
  * @param {string} referralCode - kode referral spesifik
  * @returns {Promise<Array>} list member (count yang dipakai = .length)
  */
-async function fetchReferralMembers(brand, targetDate, newOnly, referralCode) {
+async function fetchReferralMembers(brand, targetDate, mode, referralCode) {
   if (brand.engine === 'asia77') {
+    // asia77 punya filter event-based langsung
     return fetchMembersFiltered(brand.key, brand.domain, brand.userId, {
       dateDDMMYYYY: toDDMMYYYY(targetDate),
-      newmb: newOnly,
+      newmb: mode === 'new',
       referralCodes: [referralCode],
       cookieHeader: brand.cookieHeader,
     });
@@ -64,10 +77,12 @@ async function fetchReferralMembers(brand, targetDate, newOnly, referralCode) {
       apiKey: brand.apiKey,
       hash: brand.hash,
     };
+    // syntech: 'new' = semua ter-referral di rentang (no deposit filter)
+    //          'depo' = subset yang sudah deposit (total_deposit=gt0)
     return fetchSyntechMembersFiltered(config, {
       startISO: `${targetDate}T00:00:00.000+07:00`,
       endISO: `${targetDate}T23:59:59.999+07:00`,
-      newPlayer: newOnly,
+      depositFilter: mode === 'depo' ? 'gt0' : null,
       referralCodes: [referralCode],
     });
   }
@@ -165,18 +180,18 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
             depo_regis: 0,
           });
 
-          // Fetch A: new members untuk referral ini
+          // Fetch A: new members (semua register di tanggal ini via referral)
           try {
-            const newMembers = await fetchReferralMembers(brand, targetDate, true, c.referral_code);
+            const newMembers = await fetchReferralMembers(brand, targetDate, 'new', c.referral_code);
             refMap.get(c.referral_code).new_regis = newMembers.length;
           } catch (err) {
             logger.error({ brand: brand.key, ref: c.referral_code, err: err.message }, 'Fetch new members failed');
           }
           await new Promise(r => setTimeout(r, 500));
 
-          // Fetch B: non-new members (deposit aktif) untuk referral ini
+          // Fetch B: deposit members (subset yang sudah convert ke depositor)
           try {
-            const depoMembers = await fetchReferralMembers(brand, targetDate, false, c.referral_code);
+            const depoMembers = await fetchReferralMembers(brand, targetDate, 'depo', c.referral_code);
             refMap.get(c.referral_code).depo_regis = depoMembers.length;
           } catch (err) {
             logger.error({ brand: brand.key, ref: c.referral_code, err: err.message }, 'Fetch depo members failed');
@@ -326,20 +341,20 @@ export async function sendSingleReferralReport(referralId, targetDate, tenantId)
   if (!brand) throw new Error(`Brand ${ref.brand_key} not found / not configured`);
 
   try {
-    // Fetch A: new members untuk referral ini
+    // Fetch A: new members (semua register di tanggal ini via referral)
     let newCount = 0;
     try {
-      const newMembers = await fetchReferralMembers(brand, targetDate, true, ref.referral_code);
+      const newMembers = await fetchReferralMembers(brand, targetDate, 'new', ref.referral_code);
       newCount = newMembers.length;
     } catch (err) {
       logger.error({ brand: brand.key, ref: ref.referral_code, err: err.message }, 'Fetch new members failed (single)');
     }
     await new Promise(r => setTimeout(r, 500));
 
-    // Fetch B: non-new members (deposit aktif)
+    // Fetch B: deposit members (subset yang sudah convert ke depositor)
     let depoCount = 0;
     try {
-      const depoMembers = await fetchReferralMembers(brand, targetDate, false, ref.referral_code);
+      const depoMembers = await fetchReferralMembers(brand, targetDate, 'depo', ref.referral_code);
       depoCount = depoMembers.length;
     } catch (err) {
       logger.error({ brand: brand.key, ref: ref.referral_code, err: err.message }, 'Fetch depo members failed (single)');

@@ -165,24 +165,33 @@ export async function fetchSyntechRegis(config, startISO, endISO) {
 }
 
 /**
- * Fetch player list dengan filter referral + new/non-new — untuk referral report.
- * Mirror dari fetchMembersFiltered di asia77, tapi pakai filter param syntech:
+ * Fetch player list dengan filter referral + opsional total_deposit filter.
  *
- *   referred=true&referred_by=<code>  → filter ke referral specific
- *   total_deposit=eq0                  → "New Player"   (belum pernah deposit)
- *   total_deposit=gt0                  → "Non-New Player" (sudah deposit)
- *   (tidak set total_deposit)          → semua player
+ * Filter parameter syntech:
+ *   start_date / end_date              → date range filter (created_at)
+ *   referred=true&referred_by=<code>   → filter ke referral specific
+ *   total_deposit=eq0                  → snapshot SAAT INI: belum pernah deposit
+ *   total_deposit=gt0                  → snapshot SAAT INI: sudah deposit minimal 1x
+ *   (tidak set total_deposit)          → semua player ter-referral di rentang tanggal
+ *
+ * **PENTING soal semantic**: filter `total_deposit` adalah **state global SAAT INI**
+ * (snapshot dari player record), bukan event historis. Untuk backfill tanggal lalu,
+ * angka yang dihasilkan akan mencerminkan state HARI INI, bukan state ON tanggal itu.
+ *
+ * Untuk kebutuhan referral report:
+ *   - new_regis (registrasi baru) → set depositFilter = null (semua ter-referral di rentang)
+ *   - depo_regis (sudah convert) → set depositFilter = 'gt0' (subset yang sudah deposit)
  *
  * @param {object} config - { domain, user, pass, pin, apiKey, hash }
  * @param {object} opts
  * @param {string} opts.startISO - start date ISO
  * @param {string} opts.endISO - end date ISO
- * @param {boolean|null} opts.newPlayer - true = New Player only, false = Non-New only, null = both
+ * @param {'eq0'|'gt0'|null} [opts.depositFilter=null] - 'eq0' = belum deposit, 'gt0' = sudah deposit, null = no filter
  * @param {Array<string>} [opts.referralCodes] - filter referral codes (panel hanya support 1 per request)
  * @returns {Array<player>}
  */
 export async function fetchSyntechMembersFiltered(config, opts) {
-  const { startISO, endISO, newPlayer, referralCodes } = opts;
+  const { startISO, endISO, depositFilter, referralCodes } = opts;
   const limit = 200;
   const players = [];
 
@@ -204,10 +213,8 @@ export async function fetchSyntechMembersFiltered(config, opts) {
         params.set('referred', 'true');
         params.set('referred_by', code);
       }
-      if (newPlayer === true) {
-        params.set('total_deposit', 'eq0');
-      } else if (newPlayer === false) {
-        params.set('total_deposit', 'gt0');
+      if (depositFilter === 'eq0' || depositFilter === 'gt0') {
+        params.set('total_deposit', depositFilter);
       }
 
       const url = `https://${config.domain}/services/players?${params.toString()}`;
