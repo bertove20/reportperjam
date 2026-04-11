@@ -73,19 +73,26 @@ export function buildTimHtml(brand, data, dateStr, currentHour) {
     const textColor = row.isFuture ? '#9ca3af' : '#111827';
     const labelStyle = row.hour === 24 ? 'font-weight:bold;' : '';
     
-    const sisaTrxColor = row.trx.gap > 0 ? '#059669' : row.trx.gap < 0 ? '#dc2626' : textColor;
-    const sisaRegisColor = row.regis.gap > 0 ? '#059669' : row.regis.gap < 0 ? '#dc2626' : textColor;
+    // Color helper: hijau kalau positif, merah kalau negatif, default kalau nol/null
+    const deltaColor = (n) => {
+      if (n === null || n === undefined || n === 0) return textColor;
+      return n > 0 ? '#059669' : '#dc2626';
+    };
+    const trxPerHourColor = deltaColor(row.trx.perHour);
+    const trxGapColor = deltaColor(row.trx.gap);
+    const regisPerHourColor = deltaColor(row.regis.perHour);
+    const regisGapColor = deltaColor(row.regis.gap);
 
     return `<tr style="background:${bgColor};color:${textColor};">
       <td style="text-align:right;padding:3px 6px;font-size:11px;">${fmt(row.trx.yesterday)}</td>
       <td style="text-align:right;padding:3px 6px;font-weight:bold;font-size:12px;">${fmt(row.trx.today)}</td>
-      <td style="text-align:right;padding:3px 6px;font-size:11px;">${fmtDelta(row.trx.perHour)}</td>
-      <td style="text-align:right;padding:3px 6px;font-size:11px;color:${sisaTrxColor};font-weight:bold;">${fmtDelta(row.trx.gap)}</td>
+      <td style="text-align:right;padding:3px 6px;font-size:11px;color:${trxPerHourColor};font-weight:bold;">${fmtDelta(row.trx.perHour)}</td>
+      <td style="text-align:right;padding:3px 6px;font-size:11px;color:${trxGapColor};font-weight:bold;">${fmtDelta(row.trx.gap)}</td>
       <td style="text-align:center;padding:3px 6px;font-weight:bold;font-size:11px;background:#f3f4f6;${labelStyle}">${row.label}</td>
       <td style="text-align:right;padding:3px 6px;font-size:11px;">${fmt(row.regis.yesterday)}</td>
       <td style="text-align:right;padding:3px 6px;font-weight:bold;font-size:12px;">${fmt(row.regis.today)}</td>
-      <td style="text-align:right;padding:3px 6px;font-size:11px;">${fmtDelta(row.regis.perHour)}</td>
-      <td style="text-align:right;padding:3px 6px;font-size:11px;color:${sisaRegisColor};font-weight:bold;">${fmtDelta(row.regis.gap)}</td>
+      <td style="text-align:right;padding:3px 6px;font-size:11px;color:${regisPerHourColor};font-weight:bold;">${fmtDelta(row.regis.perHour)}</td>
+      <td style="text-align:right;padding:3px 6px;font-size:11px;color:${regisGapColor};font-weight:bold;">${fmtDelta(row.regis.gap)}</td>
     </tr>`;
   }).join('\n');
 
