@@ -51,6 +51,19 @@ const SIDEBAR_GROUPS = [
       { to: '/finance/loans', label: 'Pinjaman' },
       { to: '/finance/reports', label: 'Laporan' },
       { to: '/finance/settings', label: 'Settings', role: 'superadmin' },
+    ],
+  },
+  {
+    label: 'SISTEM GLOBAL',
+    module: 'admin',
+    color: '#f59e0b',
+    bgActive: 'bg-amber-600/20',
+    textActive: 'text-amber-400',
+    headerBg: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/30',
+    defaultOpen: false,
+    adminOnly: true,
+    items: [
       { to: '/admin/users', label: 'Users', role: 'superadmin' },
     ],
   },
@@ -95,6 +108,7 @@ export default function Layout() {
 
   const canSeeGroup = (group) => {
     if (group.platformOnly) return !!user?.is_platform_admin
+    if (group.adminOnly) return user?.role === 'superadmin'
     if (user?.role === 'superadmin') return true
     const perms = user?.permissions || []
     return perms.some(p => p.module === group.module)
@@ -105,7 +119,7 @@ export default function Layout() {
   const currentModule = path.startsWith('/finance') ? 'Keuangan' :
     path.startsWith('/report') ? 'Report Bot' :
     path.startsWith('/platform') ? 'Platform' :
-    path.startsWith('/admin') ? 'Admin' : ''
+    path.startsWith('/admin') ? 'Sistem Global' : ''
 
   return (
     <div className="flex h-screen bg-gray-50">

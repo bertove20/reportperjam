@@ -1,7 +1,7 @@
 import { useLocation, Link } from 'react-router-dom'
 
 const LABELS = {
-  report: 'Report Bot', finance: 'Keuangan', admin: 'Admin', platform: 'Platform',
+  report: 'Report Bot', finance: 'Keuangan', admin: 'Sistem Global', platform: 'Platform',
   brands: 'Brands', hourly: 'Hourly Report', history: 'History', comparison: 'Comparison',
   settings: 'Settings', logs: 'Logs', transactions: 'Transaksi', banks: 'Bank & Wallet',
   balance: 'Saldo', categories: 'Kategori', teams: 'Tim', loans: 'Pinjaman',
