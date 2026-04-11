@@ -27,10 +27,43 @@ import { logger } from '../logger.js';
 const DELAY_BETWEEN_DIVISIONS = 3000;
 const DELAY_BETWEEN_BRANDS = 1500;
 const DELAY_BETWEEN_REFERRAL_SENDS = 1500;
+const DELAY_BETWEEN_GROUP_COPIES = 400;
 
 function toDDMMYYYY(dateStr) {
   const [y, m, d] = dateStr.split('-');
   return `${d}-${m}-${y}`;
+}
+
+/**
+ * Parse tg_group_id field into an array of chat IDs.
+ * Accepts newline-separated, comma-separated, or space-separated input.
+ * Silently drops empty lines and duplicates.
+ */
+function parseTgGroupIds(raw) {
+  if (!raw) return [];
+  const parts = String(raw).split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+  return Array.from(new Set(parts));
+}
+
+/**
+ * Kirim satu PNG ke banyak Telegram group. Render sekali, kirim N kali.
+ * Error per group dicatat tapi tidak menghentikan group berikutnya.
+ * @returns {number} jumlah group yang sukses
+ */
+async function sendPhotoMulti(groupIds, png, caption, tenantId) {
+  let ok = 0;
+  for (const gid of groupIds) {
+    try {
+      await sendPhoto(gid, png, caption, tenantId);
+      ok++;
+    } catch (err) {
+      logger.error({ groupId: gid, err: err.message }, 'sendPhoto to group failed');
+    }
+    if (groupIds.length > 1) {
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_GROUP_COPIES));
+    }
+  }
+  return ok;
 }
 
 /**
@@ -58,7 +91,8 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
   const dateDDMMYYYY = toDDMMYYYY(targetDate);
 
   for (const div of divisions) {
-    if (!skipTelegram && !div.tg_group_id) {
+    const groupIds = parseTgGroupIds(div.tg_group_id);
+    if (!skipTelegram && groupIds.length === 0) {
       logger.warn({ division: div.division_name }, 'Division has no tg_group_id — skip');
       continue;
     }
@@ -161,6 +195,7 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
         // Ini mencegah satu gambar raksasa kena PHOTO_INVALID_DIMENSIONS
         // dan bikin pesan lebih mudah dibaca di Telegram.
         // Kalau monthly kosong, kirim 1 fallback "empty" agar group tetap dapat notifikasi.
+        // Kalau divisi punya multiple tg_group_id, render sekali → kirim ke semua group.
         const items = monthly.length > 0 ? monthly : [null];
         let sentCount = 0;
         for (const item of items) {
@@ -174,8 +209,8 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
             const caption = item
               ? `📋 ${div.division_name} │ ${item.brand_name} │ ${item.display_name || item.referral_code} │ ${targetDate}`
               : `📋 Referral Report │ ${div.division_name} │ ${targetDate} (tidak ada referral aktif)`;
-            await sendPhoto(div.tg_group_id, png, caption, tenantId);
-            sentCount++;
+            const okGroups = await sendPhotoMulti(groupIds, png, caption, tenantId);
+            if (okGroups > 0) sentCount++;
           } catch (err) {
             logger.error({
               division: div.division_name,
@@ -188,8 +223,8 @@ export async function sendReferralReports(targetDate, tenantId, divisionId = nul
         }
 
         const duration = Date.now() - start;
-        logger.info({ division: div.division_name, total: monthly.length, sent: sentCount }, 'Referral report sent (per-referral)');
-        await insertLog('referral-report', div.division_name, 'success', `${sentCount}/${monthly.length || 0} cards sent`, duration);
+        logger.info({ division: div.division_name, total: monthly.length, sent: sentCount, groups: groupIds.length }, 'Referral report sent (per-referral)');
+        await insertLog('referral-report', div.division_name, 'success', `${sentCount}/${monthly.length || 0} cards → ${groupIds.length} group(s)`, duration);
       }
     } catch (err) {
       const duration = Date.now() - start;
@@ -253,7 +288,8 @@ export async function sendSingleReferralReport(referralId, targetDate, tenantId)
     [ref.division_id, tenantId]
   );
   if (!division) throw new Error(`Division ${ref.division_id} not found`);
-  if (!division.tg_group_id) throw new Error(`Division "${division.name}" tidak punya tg_group_id`);
+  const groupIds = parseTgGroupIds(division.tg_group_id);
+  if (groupIds.length === 0) throw new Error(`Division "${division.name}" tidak punya tg_group_id`);
 
   const brands = await getBrands(tenantId);
   const brand = brands.find(b => b.key === ref.brand_key);
@@ -307,7 +343,7 @@ export async function sendSingleReferralReport(referralId, targetDate, tenantId)
       throw new Error(`Referral ${ref.referral_code} tidak muncul di monthly breakdown — mungkin non-active`);
     }
 
-    // Render + send
+    // Render + send (ke semua group kalau divisi punya multiple)
     const html = buildReferralReportHtml({
       divisionName: division.name,
       date: targetDate,
@@ -315,17 +351,19 @@ export async function sendSingleReferralReport(referralId, targetDate, tenantId)
     });
     const png = await renderPng(html, { width: 1720 });
     const caption = `📋 ${division.name} │ ${item.brand_name} │ ${item.display_name || item.referral_code} │ ${targetDate}`;
-    await sendPhoto(division.tg_group_id, png, caption, tenantId);
+    const okGroups = await sendPhotoMulti(groupIds, png, caption, tenantId);
+    if (okGroups === 0) throw new Error(`Gagal kirim ke semua group (${groupIds.length})`);
 
     const duration = Date.now() - start;
     logger.info({
-      referralId, brand: brand.key, ref: ref.referral_code, division: division.name, date: targetDate,
+      referralId, brand: brand.key, ref: ref.referral_code, division: division.name,
+      date: targetDate, groups: groupIds.length, ok: okGroups,
     }, 'Single referral report sent');
     await insertLog(
       'referral-report',
       division.name,
       'success',
-      `${brand.key}/${ref.referral_code} · ${targetDate}`,
+      `${brand.key}/${ref.referral_code} · ${targetDate} → ${okGroups}/${groupIds.length} group(s)`,
       duration
     );
 
