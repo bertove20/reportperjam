@@ -48,37 +48,55 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      {status?.stats?.length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-lg font-semibold mb-3 text-gray-900">Last 24h Stats</h2>
-          <div className="bg-white rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-2 text-left">Job Type</th>
-                  <th className="px-4 py-2 text-left">Status</th>
-                  <th className="px-4 py-2 text-right">Count</th>
-                  <th className="px-4 py-2 text-right">Last Run</th>
-                </tr>
-              </thead>
-              <tbody>
-                {status.stats.map((s, i) => (
-                  <tr key={i} className="border-t">
-                    <td className="px-4 py-2">{s.job_type}</td>
-                    <td className="px-4 py-2">
-                      <span className={`px-2 py-0.5 rounded text-xs ${s.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {s.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right">{s.count}</td>
-                    <td className="px-4 py-2 text-right text-gray-500">{s.last_at?.replace('T', ' ').slice(0, 19)}</td>
+      {status?.stats?.length > 0 && (() => {
+        // Build a map brand_key → display name from brand cards for friendlier labels
+        const brandNameMap = new Map((status?.brands || []).map(b => [b.key, b.name]))
+        const fmtBrand = (key) => {
+          if (!key) return <span className="text-gray-400 italic">—</span>
+          const name = brandNameMap.get(key)
+          return name ? (
+            <div className="flex flex-col">
+              <span className="font-medium text-gray-900">{name}</span>
+              <span className="text-[10px] text-gray-500 font-mono">{key}</span>
+            </div>
+          ) : (
+            <span className="font-mono text-xs text-gray-700">{key}</span>
+          )
+        }
+        return (
+          <div className="mt-8">
+            <h2 className="text-lg font-semibold mb-3 text-gray-900">Last 24h Stats</h2>
+            <div className="bg-white rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Brand</th>
+                    <th className="px-4 py-2 text-left">Job Type</th>
+                    <th className="px-4 py-2 text-left">Status</th>
+                    <th className="px-4 py-2 text-right">Count</th>
+                    <th className="px-4 py-2 text-right">Last Run</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {status.stats.map((s, i) => (
+                    <tr key={i} className="border-t">
+                      <td className="px-4 py-2">{fmtBrand(s.brand_key)}</td>
+                      <td className="px-4 py-2">{s.job_type}</td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-0.5 rounded text-xs ${s.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {s.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right">{s.count}</td>
+                      <td className="px-4 py-2 text-right text-gray-500 tabular-nums">{s.last_at?.replace('T', ' ').slice(0, 19)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
