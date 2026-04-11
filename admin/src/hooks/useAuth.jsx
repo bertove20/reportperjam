@@ -30,7 +30,6 @@ export function AuthProvider({ children }) {
       isAuthenticated: !!user,
       role: user?.role || 'staff',
       isSuperAdmin: user?.role === 'superadmin',
-      isPlatformAdmin: !!user?.is_platform_admin,
       canEdit: user?.role !== 'staff',
       tenant: user?.tenant || null,
     }}>

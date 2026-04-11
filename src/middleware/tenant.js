@@ -72,9 +72,6 @@ export function registerTenantMiddleware(app) {
     // Skip tenant resolution for public routes
     if (path === '/api/signup' || path === '/api/tenant-info') return;
 
-    // Platform admin routes don't need tenant
-    if (path.startsWith('/api/platform/')) return;
-
     // Skip for static files
     if (!path.startsWith('/api/')) return;
 

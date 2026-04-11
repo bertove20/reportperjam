@@ -27,7 +27,6 @@ import actionRoutes from './routes/actions.js';
 import userRoutes from './routes/users.js';
 import referralRoutes from './routes/referrals.js';
 import financeModule from './routes/finance/index.js';
-import platformRoutes from './routes/platform.js';
 import signupRoutes from './routes/signup.js';
 import homeRoutes from './routes/home.js';
 
@@ -66,7 +65,6 @@ async function start() {
   await app.register(userRoutes);
   await app.register(referralRoutes);
   await app.register(financeModule);
-  await app.register(platformRoutes);
   await app.register(signupRoutes);
   await app.register(homeRoutes);
 
