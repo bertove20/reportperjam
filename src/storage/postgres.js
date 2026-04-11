@@ -173,6 +173,7 @@ export async function initDatabase() {
       auth_pass TEXT,
       auth_pin TEXT,
       auth_api_key TEXT,
+      auth_hash TEXT,
       primary_color TEXT DEFAULT '#7c3aed',
       logo_base64 TEXT,
       division_id INTEGER REFERENCES divisions(id) ON DELETE SET NULL,
@@ -429,6 +430,7 @@ async function migrateToMultiTenant() {
     'ALTER TABLE divisions ADD COLUMN IF NOT EXISTS tg_group_id TEXT',
     'ALTER TABLE referral_codes ADD COLUMN IF NOT EXISTS referral_type TEXT',
     'ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS auth_api_key TEXT',
+    'ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS auth_hash TEXT',
   ];
 
   // Referral codes table (brand → referral → division mapping)

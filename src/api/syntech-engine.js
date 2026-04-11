@@ -48,10 +48,19 @@ async function authenticate(config) {
   const { domain, user: username, pass: password, pin } = config;
 
   // Step 1: Login
+  // `hash` adalah session fingerprint yang panel butuh untuk anti-replay.
+  // Untuk panel joko77 / WIS variants, hash bersifat statis per akun/device
+  // dan harus disimpan sebagai bagian dari brand config (auth_hash).
+  // Untuk panel syntech original yang tidak butuh hash, fallback ke ''.
   const loginRes = await fetch(`https://${domain}/services/login`, {
     method: 'POST',
     headers: buildHeaders(config, null),
-    body: JSON.stringify({ username, password, remember: true, hash: '' }),
+    body: JSON.stringify({
+      username,
+      password,
+      remember: true,
+      hash: config.hash || '',
+    }),
   });
 
   if (!loginRes.ok) {

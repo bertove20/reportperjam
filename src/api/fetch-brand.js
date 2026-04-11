@@ -55,7 +55,7 @@ export async function fetchAllBrands(dateStr, hour, tenantId = null) {
 
       } else if (brand.engine === 'syntech') {
         const dateISO = `${dateStr}T${String(hour).padStart(2, '0')}:00:00+07:00`;
-        const config = { domain: brand.domain, user: brand.user, pass: brand.pass, pin: brand.pin, apiKey: brand.apiKey };
+        const config = { domain: brand.domain, user: brand.user, pass: brand.pass, pin: brand.pin, apiKey: brand.apiKey, hash: brand.hash };
 
         const daily = await withRetry(
           () => fetchSyntechDaily(config, dateISO),
@@ -118,7 +118,7 @@ export async function fetchAllBrandsFinish(yesterdayDateStr, tenantId = null) {
         );
 
       } else if (brand.engine === 'syntech') {
-        const config = { domain: brand.domain, user: brand.user, pass: brand.pass, pin: brand.pin, apiKey: brand.apiKey };
+        const config = { domain: brand.domain, user: brand.user, pass: brand.pass, pin: brand.pin, apiKey: brand.apiKey, hash: brand.hash };
         const dateISO = `${yesterdayDateStr}T23:59:59+07:00`;
 
         const daily = await withRetry(

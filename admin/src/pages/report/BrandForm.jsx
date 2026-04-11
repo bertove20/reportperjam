@@ -19,7 +19,7 @@ export default function BrandForm() {
     key: '', name: '', engine: 'asia77', domain: '',
     is_active: 1, sort_order: 0,
     user_id: 0, cookie_header: '',
-    auth_user: '', auth_pass: '', auth_pin: '', auth_api_key: '',
+    auth_user: '', auth_pass: '', auth_pin: '', auth_api_key: '', auth_hash: '',
     primary_color: '#7c3aed', logo_base64: '',
   })
   const [error, setError] = useState('')
@@ -45,6 +45,7 @@ export default function BrandForm() {
         auth_pass: existing.auth_pass || '',
         auth_pin: existing.auth_pin || '',
         auth_api_key: existing.auth_api_key || '',
+        auth_hash: existing.auth_hash || '',
         primary_color: existing.primary_color || '#7c3aed',
         logo_base64: existing.logo_base64 || '',
       })
@@ -177,6 +178,18 @@ export default function BrandForm() {
               <p className="text-xs text-gray-400 mt-1">
                 Beberapa panel butuh header <code>x-data-reference</code>.
                 Cari di DevTools &gt; Network &gt; Request Headers saat login. Kosongkan kalau panel tidak butuh.
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Login Hash <span className="text-gray-400 font-normal">— optional</span>
+              </label>
+              <input value={form.auth_hash} onChange={set('auth_hash')}
+                placeholder="4274fc90964fc09c799a0dab793d4602"
+                className="w-full border rounded px-3 py-2 text-sm font-mono" />
+              <p className="text-xs text-gray-400 mt-1">
+                Beberapa panel butuh field <code>hash</code> di body login (session fingerprint).
+                Cari di DevTools &gt; Network &gt; Request Payload saat klik Login. Kosongkan kalau panel tidak butuh.
               </p>
             </div>
           </div>

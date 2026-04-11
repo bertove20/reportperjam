@@ -28,6 +28,7 @@ export default async function brandRoutes(app) {
     if (brand.auth_pass) brand.auth_pass = '********';
     if (brand.auth_pin) brand.auth_pin = '****';
     if (brand.auth_api_key) brand.auth_api_key = '********';
+    if (brand.auth_hash) brand.auth_hash = '********';
     return brand;
   });
 
@@ -48,6 +49,7 @@ export default async function brandRoutes(app) {
     if (data.auth_pass) data.auth_pass = encrypt(data.auth_pass);
     if (data.auth_pin) data.auth_pin = encrypt(data.auth_pin);
     if (data.auth_api_key) data.auth_api_key = encrypt(data.auth_api_key);
+    if (data.auth_hash) data.auth_hash = encrypt(data.auth_hash);
 
     data.tenant_id = tid;
     const brand = await createBrand(data);
@@ -78,6 +80,11 @@ export default async function brandRoutes(app) {
       data.auth_api_key = encrypt(data.auth_api_key);
     } else {
       delete data.auth_api_key;
+    }
+    if (data.auth_hash && data.auth_hash !== '********') {
+      data.auth_hash = encrypt(data.auth_hash);
+    } else {
+      delete data.auth_hash;
     }
 
     const updated = await updateBrand(request.params.key, data, tid);
@@ -202,6 +209,7 @@ export default async function brandRoutes(app) {
           pass: decrypt(brand.auth_pass),
           pin: decrypt(brand.auth_pin),
           apiKey: decrypt(brand.auth_api_key),
+          hash: decrypt(brand.auth_hash),
         };
 
         const dt = new DateTime();
