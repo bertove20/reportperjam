@@ -25,8 +25,17 @@ export default function ReportHistory() {
     enabled: !!brand,
   })
 
+  // Format YYYY-MM-DD → DD/MM/YYYY untuk display di tabel
+  const formatFullDate = (ymd) => {
+    const parts = ymd.split('-')
+    if (parts.length !== 3) return ymd
+    return `${parts[2]}/${parts[1]}/${parts[0]}`
+  }
+
   const chartData = data?.dailyTrend?.map(d => ({
-    date: d.date.slice(5),
+    date: d.date.slice(5),       // MM-DD untuk axis chart (hemat ruang)
+    dateFull: formatFullDate(d.date), // DD/MM/YYYY untuk tabel
+    dateRaw: d.date,             // YYYY-MM-DD untuk key yang stabil
     TRX: d.trx,
     REGIS: d.regis,
   })) || []
@@ -90,8 +99,8 @@ export default function ReportHistory() {
               </thead>
               <tbody>
                 {[...chartData].reverse().map(d => (
-                  <tr key={d.date} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-2">{d.date}</td>
+                  <tr key={d.dateRaw} className="border-t hover:bg-gray-50">
+                    <td className="px-4 py-2 tabular-nums">{d.dateFull}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{d.TRX?.toLocaleString('id-ID') || '—'}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{d.REGIS?.toLocaleString('id-ID') || '—'}</td>
                   </tr>
