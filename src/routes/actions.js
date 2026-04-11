@@ -12,7 +12,7 @@ import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia7
 import { fetchSyntechDaily, fetchSyntechRegis, fetchSyntechPlayersWithTime } from '../api/syntech-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
 import { sendReferralReports, backfillReferralSnapshots, sendSingleReferralReport, backfillSingleReferral } from '../tim/referral-report-orchestrator.js';
-import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
+import { upsertSnapshot, upsertSnapshotNullable, forceUpsertSnapshot, queryOne, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
 import { DateTime } from '../utils/datetime.js';
@@ -301,6 +301,96 @@ export default async function actionRoutes(app) {
     }
 
     return { success: true, targetDate, results };
+  });
+
+  // POST /api/actions/import-snapshots
+  // body: { rows: [{brand, date, hour, trx, regis}, ...] }
+  // Bulk import hourly snapshot dari CSV upload (dry-run-able client-side first).
+  // Force upsert — selalu overwrite data existing untuk slot (brand, date, hour) yang sama.
+  app.post('/api/actions/import-snapshots', async (request, reply) => {
+    const tid = request.tenantId;
+    const { rows } = request.body || {};
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return reply.code(400).send({ error: 'rows array required' });
+    }
+    if (rows.length > 5000) {
+      return reply.code(400).send({ error: 'maksimal 5000 baris per import' });
+    }
+
+    // Whitelist brand keys yang aktif untuk tenant ini supaya import tidak bocor antar tenant
+    const validBrands = await queryRows(
+      'SELECT key FROM report_brands WHERE tenant_id = $1',
+      [tid]
+    );
+    const validBrandSet = new Set(validBrands.map(b => b.key));
+
+    const start = Date.now();
+    let inserted = 0;
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const lineNo = i + 2; // CSV header line + 1-indexed
+      try {
+        const brand = String(row.brand || '').trim();
+        const date = String(row.date || '').trim();
+        const hour = parseInt(row.hour, 10);
+        const trx = parseInt(row.trx, 10);
+        const regis = parseInt(row.regis, 10);
+
+        // Validate brand
+        if (!brand) { errors.push({ line: lineNo, error: 'brand kosong' }); continue; }
+        if (!validBrandSet.has(brand)) {
+          errors.push({ line: lineNo, error: `brand "${brand}" tidak ditemukan untuk tenant ini` });
+          continue;
+        }
+
+        // Validate date YYYY-MM-DD
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          errors.push({ line: lineNo, error: `date "${date}" harus YYYY-MM-DD` });
+          continue;
+        }
+
+        // Validate hour 0..24
+        if (!Number.isFinite(hour) || hour < 0 || hour > 24) {
+          errors.push({ line: lineNo, error: `hour "${row.hour}" harus angka 0-24` });
+          continue;
+        }
+
+        // Validate trx & regis
+        if (!Number.isFinite(trx) || trx < 0) {
+          errors.push({ line: lineNo, error: `trx "${row.trx}" harus angka >= 0` });
+          continue;
+        }
+        if (!Number.isFinite(regis) || regis < 0) {
+          errors.push({ line: lineNo, error: `regis "${row.regis}" harus angka >= 0` });
+          continue;
+        }
+
+        await forceUpsertSnapshot(brand, date, hour, trx, regis, tid);
+        inserted++;
+      } catch (err) {
+        errors.push({ line: lineNo, error: err.message });
+      }
+    }
+
+    const duration = Date.now() - start;
+    logger.info({ tenantId: tid, inserted, errors: errors.length, duration }, 'Snapshot CSV import complete');
+    await insertLog(
+      'import',
+      'CSV',
+      errors.length === 0 ? 'success' : (inserted === 0 ? 'error' : 'success'),
+      `${inserted} baris terimport, ${errors.length} error`,
+      duration
+    );
+
+    return {
+      success: true,
+      total: rows.length,
+      inserted,
+      failed: errors.length,
+      errors: errors.slice(0, 50), // cap supaya response tidak meledak
+    };
   });
 
   // GET /api/actions/missing-hours

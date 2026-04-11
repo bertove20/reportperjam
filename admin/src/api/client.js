@@ -194,4 +194,5 @@ export const actions = {
   fetchFinish: (date) => request('/actions/fetch-finish', { method: 'POST', body: { date } }),
   backfill: (date, brandKey) => request('/actions/backfill', { method: 'POST', body: { date, brandKey } }),
   missingHours: (brand, date) => request(`/actions/missing-hours?brand=${brand}&date=${date}`),
+  importSnapshots: (rows) => request('/actions/import-snapshots', { method: 'POST', body: { rows } }),
 };

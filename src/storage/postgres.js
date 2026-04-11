@@ -550,6 +550,23 @@ export async function upsertSnapshot(brand, date, hour, trx, regis, tenantId = 1
   `, [brand, date, hour, trx, regis, tid]);
 }
 
+/**
+ * Force-upsert snapshot — always overwrite, no freshness check.
+ * Untuk import CSV manual oleh operator yang sengaja menulis data.
+ */
+export async function forceUpsertSnapshot(brand, date, hour, trx, regis, tenantId = 1) {
+  const tid = tenantId || 1;
+  await query(`
+    INSERT INTO hourly_snapshots (brand, date, hour, deposit_accepted_count, regis_total, tenant_id, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+    ON CONFLICT ON CONSTRAINT uq_snapshots_tenant
+    DO UPDATE SET
+      deposit_accepted_count = EXCLUDED.deposit_accepted_count,
+      regis_total = EXCLUDED.regis_total,
+      updated_at = NOW()
+  `, [brand, date, hour, trx, regis, tid]);
+}
+
 export async function upsertSnapshotNullable(brand, date, hour, trx, regis, tenantId = 1) {
   const tid = tenantId || 1;
   const existing = await queryOne(
