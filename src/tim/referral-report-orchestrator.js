@@ -309,6 +309,112 @@ export async function backfillReferralSnapshots(startDate, endDate, tenantId, di
 }
 
 /**
+ * Backfill snapshot untuk SATU referral saja (tombol Backfill per-row di Referrals page).
+ * Jauh lebih ringan dari backfillReferralSnapshots karena hanya fetch new+depo
+ * untuk 1 referral × N tanggal, bukan semua referral di divisi.
+ *
+ * Tidak kirim ke Telegram — hanya isi snapshot table.
+ *
+ * @param {number} referralId
+ * @param {string} startDate — YYYY-MM-DD
+ * @param {string} endDate — YYYY-MM-DD
+ * @param {number} tenantId
+ * @returns {Promise<{ok: boolean, dates: number, succeeded: number, failed: number}>}
+ */
+export async function backfillSingleReferral(referralId, startDate, endDate, tenantId) {
+  const overallStart = Date.now();
+
+  const ref = await getReferralCode(referralId, tenantId);
+  if (!ref) throw new Error(`Referral ${referralId} not found`);
+  if (!ref.division_id) throw new Error(`Referral ${ref.referral_code} tidak punya division — set division dulu`);
+
+  const brands = await getBrands(tenantId);
+  const brand = brands.find(b => b.key === ref.brand_key);
+  if (!brand) throw new Error(`Brand ${ref.brand_key} not found / not configured`);
+
+  // Build daftar tanggal
+  const dates = [];
+  const startD = new Date(startDate + 'T00:00:00Z');
+  const endD = new Date(endDate + 'T00:00:00Z');
+  if (endD < startD) throw new Error('endDate must be >= startDate');
+  for (let d = new Date(startD); d <= endD; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10));
+  }
+
+  logger.info({
+    referralId, brand: brand.key, ref: ref.referral_code,
+    dates: dates.length, startDate, endDate,
+  }, 'Single referral backfill started');
+
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const targetDate of dates) {
+    try {
+      // Fetch A: new members
+      let newCount = 0;
+      try {
+        const newMembers = await fetchReferralMembers(brand, targetDate, 'new', ref.referral_code);
+        newCount = newMembers.length;
+      } catch (err) {
+        logger.error({
+          brand: brand.key, ref: ref.referral_code, date: targetDate, err: err.message,
+        }, 'Backfill: fetch new members failed');
+        failed++;
+        continue;
+      }
+      await new Promise(r => setTimeout(r, 500));
+
+      // Fetch B: depo members
+      let depoCount = 0;
+      try {
+        const depoMembers = await fetchReferralMembers(brand, targetDate, 'depo', ref.referral_code);
+        depoCount = depoMembers.length;
+      } catch (err) {
+        logger.error({
+          brand: brand.key, ref: ref.referral_code, date: targetDate, err: err.message,
+        }, 'Backfill: fetch depo members failed');
+        // Tetap upsert dengan depoCount=0 supaya new_regis tetap tersimpan
+      }
+
+      // Upsert snapshot untuk tanggal ini
+      try {
+        await upsertReferralDailySnapshot(
+          tenantId, ref.division_id, brand.key, ref.referral_code, targetDate, newCount, depoCount
+        );
+        succeeded++;
+      } catch (err) {
+        logger.warn({
+          err: err.message, brand: brand.key, ref: ref.referral_code, date: targetDate,
+        }, 'Backfill: snapshot upsert failed');
+        failed++;
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+    } catch (err) {
+      logger.error({ date: targetDate, err: err.message }, 'Backfill: unexpected error per date');
+      failed++;
+    }
+  }
+
+  const duration = Date.now() - overallStart;
+  logger.info({
+    referralId, brand: brand.key, ref: ref.referral_code,
+    dates: dates.length, succeeded, failed, duration,
+  }, 'Single referral backfill complete');
+
+  await insertLog(
+    'referral-backfill',
+    `${brand.key}/${ref.referral_code}`,
+    failed === 0 ? 'success' : (succeeded === 0 ? 'error' : 'success'),
+    `${succeeded}/${dates.length} dates · ${startDate}..${endDate}`,
+    duration
+  );
+
+  return { ok: true, dates: dates.length, succeeded, failed };
+}
+
+/**
  * Kirim referral report untuk SATU referral saja (manual dari admin panel).
  *
  * Flow:

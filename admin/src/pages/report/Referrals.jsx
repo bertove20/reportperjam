@@ -26,6 +26,15 @@ export default function Referrals() {
   const [backfillStatus, setBackfillStatus] = useState('')
   const [sendingId, setSendingId] = useState(null)
 
+  // Per-row backfill modal state
+  const todayLocal = new Date().toISOString().slice(0, 10)
+  const monthStartLocal = todayLocal.slice(0, 8) + '01'
+  const yesterdayLocal = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10) })()
+  const [singleBackfillRow, setSingleBackfillRow] = useState(null)
+  const [singleBackfillStart, setSingleBackfillStart] = useState(monthStartLocal)
+  const [singleBackfillEnd, setSingleBackfillEnd] = useState(yesterdayLocal)
+  const [singleBackfillBusy, setSingleBackfillBusy] = useState(false)
+
   const { data: rows = [] } = useQuery({ queryKey: ['referrals'], queryFn: () => referralsApi.list() })
   const { data: brandList = [] } = useQuery({ queryKey: ['brands-all'], queryFn: () => brandsApi.list(false) })
   const { data: divisionList = [] } = useQuery({ queryKey: ['admin-divisions'], queryFn: () => admin.divisions.list() })
@@ -89,6 +98,39 @@ export default function Referrals() {
       alert(`Gagal kirim: ${err.message}`)
     } finally {
       setSendingId(null)
+    }
+  }
+
+  const openSingleBackfill = (r) => {
+    // Reset range setiap kali buka — default = awal bulan ini → kemarin
+    setSingleBackfillStart(monthStartLocal)
+    setSingleBackfillEnd(yesterdayLocal)
+    setSingleBackfillRow(r)
+  }
+
+  const closeSingleBackfill = () => {
+    if (singleBackfillBusy) return
+    setSingleBackfillRow(null)
+  }
+
+  const runSingleBackfill = async () => {
+    if (!singleBackfillRow) return
+    if (!singleBackfillStart || !singleBackfillEnd) { alert('Isi tanggal mulai dan akhir'); return }
+    if (singleBackfillStart > singleBackfillEnd) { alert('Tanggal mulai harus <= tanggal akhir'); return }
+
+    setSingleBackfillBusy(true)
+    try {
+      const result = await actions.referralBackfillSingle(
+        singleBackfillRow.id,
+        singleBackfillStart,
+        singleBackfillEnd
+      )
+      alert(`Backfill selesai untuk ${singleBackfillRow.referral_code}\n\n${result.succeeded}/${result.dates} tanggal berhasil${result.failed > 0 ? `, ${result.failed} gagal` : ''}.`)
+      setSingleBackfillRow(null)
+    } catch (err) {
+      alert(`Gagal backfill: ${err.message}`)
+    } finally {
+      setSingleBackfillBusy(false)
     }
   }
 
@@ -197,14 +239,24 @@ export default function Referrals() {
         onAdd={openAdd} onEdit={openEdit}
         onDelete={(r) => { if (confirm(`Delete referral ${r.referral_code}?`)) deleteMut.mutate(r.id) }}
         renderExtraActions={(r) => (
-          <button
-            onClick={() => handleSendSingle(r)}
-            disabled={sendingId === r.id || !r.is_active}
-            className="px-2 py-0.5 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            title={r.is_active ? `Kirim referral ini ke Telegram (tanggal: ${sendDate})` : 'Referral nonaktif — aktifkan dulu untuk bisa dikirim'}
-          >
-            {sendingId === r.id ? 'Mengirim...' : 'Kirim'}
-          </button>
+          <>
+            <button
+              onClick={() => handleSendSingle(r)}
+              disabled={sendingId === r.id || !r.is_active}
+              className="px-2 py-0.5 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={r.is_active ? `Kirim referral ini ke Telegram (tanggal: ${sendDate})` : 'Referral nonaktif — aktifkan dulu untuk bisa dikirim'}
+            >
+              {sendingId === r.id ? 'Mengirim...' : 'Kirim'}
+            </button>
+            <button
+              onClick={() => openSingleBackfill(r)}
+              disabled={!r.is_active}
+              className="px-2 py-0.5 text-xs bg-amber-50 text-amber-700 rounded hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={r.is_active ? 'Backfill snapshot referral ini untuk rentang tanggal (tidak kirim TG)' : 'Referral nonaktif — aktifkan dulu untuk bisa di-backfill'}
+            >
+              Backfill
+            </button>
+          </>
         )} />
 
       {modal && (
@@ -231,6 +283,52 @@ export default function Referrals() {
           <Select label="Active" value={form.is_active ?? '1'} onChange={setF('is_active')}
             options={[{ value: '1', label: 'Yes' }, { value: '0', label: 'No' }]} />
         </FormModal>
+      )}
+
+      {singleBackfillRow && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={closeSingleBackfill}>
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1">Backfill Referral</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              <span className="font-mono font-semibold text-gray-800">{singleBackfillRow.brand_key} / {singleBackfillRow.referral_code}</span>
+              {singleBackfillRow.display_name && <span> — {singleBackfillRow.display_name}</span>}
+            </p>
+            <p className="text-xs text-gray-600 mb-4 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              Akan fetch new + depo dari panel brand untuk setiap tanggal di rentang ini, lalu upsert snapshot.
+              <b> Tidak mengirim ke Telegram.</b> Hanya 1 referral ini saja yang di-backfill — jauh lebih ringan dari backfill divisi penuh.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Dari Tanggal</label>
+                <input type="date" value={singleBackfillStart} onChange={e => setSingleBackfillStart(e.target.value)}
+                  className="w-full border rounded px-2.5 py-1.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Sampai Tanggal</label>
+                <input type="date" value={singleBackfillEnd} onChange={e => setSingleBackfillEnd(e.target.value)}
+                  className="w-full border rounded px-2.5 py-1.5 text-sm" />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-4">
+              <button
+                type="button"
+                onClick={runSingleBackfill}
+                disabled={singleBackfillBusy}
+                className="bg-amber-600 text-white px-4 py-1.5 rounded text-sm hover:bg-amber-700 disabled:opacity-50"
+              >
+                {singleBackfillBusy ? 'Sedang backfill...' : 'Run Backfill'}
+              </button>
+              <button
+                type="button"
+                onClick={closeSingleBackfill}
+                disabled={singleBackfillBusy}
+                className="bg-gray-100 px-4 py-1.5 rounded text-sm hover:bg-gray-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

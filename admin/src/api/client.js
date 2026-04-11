@@ -190,6 +190,7 @@ export const actions = {
   referralReportNow: (date, divisionId) => request('/actions/referral-report-now', { method: 'POST', body: { date, divisionId } }),
   referralReportSingle: (referralId, date) => request('/actions/referral-report-single', { method: 'POST', body: { referralId, date } }),
   referralBackfill: (startDate, endDate, divisionId) => request('/actions/referral-backfill', { method: 'POST', body: { startDate, endDate, divisionId } }),
+  referralBackfillSingle: (referralId, startDate, endDate) => request('/actions/referral-backfill-single', { method: 'POST', body: { referralId, startDate, endDate } }),
   fetchFinish: (date) => request('/actions/fetch-finish', { method: 'POST', body: { date } }),
   backfill: (date, brandKey) => request('/actions/backfill', { method: 'POST', body: { date, brandKey } }),
   missingHours: (brand, date) => request(`/actions/missing-hours?brand=${brand}&date=${date}`),

@@ -11,7 +11,7 @@ import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
 import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia77DepositHistory } from '../api/asia77-engine.js';
 import { fetchSyntechDaily, fetchSyntechRegis, fetchSyntechPlayersWithTime } from '../api/syntech-engine.js';
 import { sendTimReports } from '../tim/tim-orchestrator.js';
-import { sendReferralReports, backfillReferralSnapshots, sendSingleReferralReport } from '../tim/referral-report-orchestrator.js';
+import { sendReferralReports, backfillReferralSnapshots, sendSingleReferralReport, backfillSingleReferral } from '../tim/referral-report-orchestrator.js';
 import { upsertSnapshot, upsertSnapshotNullable, queryOne, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
@@ -120,6 +120,27 @@ export default async function actionRoutes(app) {
     });
 
     return { success: true, message: `Backfill started for ${startDate} to ${endDate}` };
+  });
+
+  // POST /api/actions/referral-backfill-single
+  // body: { referralId, startDate, endDate }
+  // Backfill 1 referral saja untuk range tanggal — sync, tidak kirim TG
+  app.post('/api/actions/referral-backfill-single', async (request, reply) => {
+    const tid = request.tenantId;
+    const { referralId, startDate, endDate } = request.body || {};
+    if (!referralId) return reply.code(400).send({ error: 'referralId required' });
+    if (!startDate || !endDate) {
+      return reply.code(400).send({ error: 'startDate and endDate are required (YYYY-MM-DD)' });
+    }
+
+    logger.info({ tenantId: tid, referralId, startDate, endDate }, 'Single referral backfill triggered');
+    try {
+      const result = await backfillSingleReferral(referralId, startDate, endDate, tid);
+      return { success: true, ...result };
+    } catch (err) {
+      logger.error({ referralId, err: err.message }, 'Single referral backfill failed');
+      return reply.code(500).send({ success: false, error: err.message });
+    }
   });
 
   // POST /api/actions/backfill
