@@ -8,6 +8,7 @@ export default function ReferralsDashboard() {
   const [divisionId, setDivisionId] = useState('')
   const [date, setDate] = useState(today)
   const [brandFilter, setBrandFilter] = useState('')
+  const [search, setSearch] = useState('')
 
   const { data: divisionList = [] } = useQuery({
     queryKey: ['admin-divisions'],
@@ -45,10 +46,36 @@ export default function ReferralsDashboard() {
   }, [items])
 
   // Filter by selected brand (client-side)
-  const visibleGroups = useMemo(() => {
+  const brandFiltered = useMemo(() => {
     if (!brandFilter) return brandGroups
     return brandGroups.filter(g => g.brand_key === brandFilter)
   }, [brandGroups, brandFilter])
+
+  // Filter by search query — match on brand name/key or referral code/keterangan/jenis
+  const visibleGroups = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return brandFiltered
+    return brandFiltered
+      .map(g => {
+        const brandHit =
+          g.brand_key.toLowerCase().includes(q) ||
+          (g.brand_name || '').toLowerCase().includes(q)
+        // Kalau brand-level hit → tampilkan semua referral-nya.
+        // Kalau tidak, filter referrals yang match di code/display_name/referral_type.
+        const refs = brandHit
+          ? g.referrals
+          : g.referrals.filter(r =>
+            (r.referral_code || '').toLowerCase().includes(q) ||
+            (r.display_name || '').toLowerCase().includes(q) ||
+            (r.referral_type || '').toLowerCase().includes(q)
+          )
+        return refs.length > 0 ? { ...g, referrals: refs } : null
+      })
+      .filter(Boolean)
+  }, [brandFiltered, search])
+
+  const totalRefsVisible = visibleGroups.reduce((a, g) => a + g.referrals.length, 0)
+  const totalRefsAll = brandFiltered.reduce((a, g) => a + g.referrals.length, 0)
 
   return (
     <div className="space-y-4">
@@ -63,7 +90,7 @@ export default function ReferralsDashboard() {
       <div className="bg-white rounded-lg border p-4 flex items-end gap-3 flex-wrap">
         <div>
           <label className="block text-xs text-gray-600 mb-1">Divisi</label>
-          <select value={divisionId} onChange={e => { setDivisionId(e.target.value); setBrandFilter('') }}
+          <select value={divisionId} onChange={e => { setDivisionId(e.target.value); setBrandFilter(''); setSearch('') }}
             className="border rounded px-3 py-1.5 text-sm min-w-[200px]">
             <option value="">-- pilih divisi --</option>
             {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -87,9 +114,36 @@ export default function ReferralsDashboard() {
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
             className="border rounded px-3 py-1.5 text-sm" />
         </div>
-        <div className="text-xs text-gray-500 ml-2 flex-1">
-          Menampilkan data sepanjang bulan yang memuat tanggal ini
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-xs text-gray-600 mb-1">Pencarian</label>
+          <div className="relative">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Cari brand / referral code / keterangan..."
+              className="border rounded px-3 py-1.5 text-sm w-full pr-16"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-800"
+                title="Clear pencarian"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
+      </div>
+      <div className="text-xs text-gray-500 -mt-2 px-1 flex items-center gap-3 flex-wrap">
+        <span>Menampilkan data sepanjang bulan yang memuat tanggal ini.</span>
+        {search && (
+          <span className="text-blue-700 font-medium">
+            Hasil pencarian: {totalRefsVisible} dari {totalRefsAll} referral
+          </span>
+        )}
       </div>
 
       {isLoading && <div className="text-gray-500 text-center py-8">Loading...</div>}
@@ -97,6 +151,13 @@ export default function ReferralsDashboard() {
       {!isLoading && items.length === 0 && (
         <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
           Tidak ada referral aktif untuk divisi ini. Tambahkan di halaman Referrals.
+        </div>
+      )}
+
+      {!isLoading && items.length > 0 && visibleGroups.length === 0 && (
+        <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+          Tidak ada hasil untuk pencarian <b>"{search}"</b>.
+          <button onClick={() => setSearch('')} className="ml-2 text-blue-600 hover:underline">Reset pencarian</button>
         </div>
       )}
 
