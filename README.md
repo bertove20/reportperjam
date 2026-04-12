@@ -25,7 +25,7 @@ Multi-tenant Fastify + React + PostgreSQL SaaS untuk **laporan hourly per brand*
 
 **Hourly Report Brand:**
 - Fetch TRX (deposit accepted) dan REGIS (registrasi) per jam dari panel brand
-- Render PNG screenshot per brand → kirim ke grup Telegram setiap `:05`
+- Render PNG screenshot per brand → kirim ke grup Telegram setiap `:03` (data fresh, bukan stale)
 - Tabel 24 baris (jam 1-23 + FINISH) dengan kolom KMRN / HARI INI / SELISIH/JAM / SELISIH KMRN — kedua kolom selisih diwarnai hijau (positif) / merah (negatif)
 - Header card: nama brand + tanggal lengkap + jam update + warna primary brand
 - Scoreboard, projection (pace, est EOD, target, selisih), trend bar 24-jam
@@ -82,26 +82,36 @@ tenant ──┬── divisions ──┬── users
 
 | Cron | Waktu | Aksi |
 |---|---|---|
-| `0 1-23 * * *` | `:00` jam 1-23 | **Fetch hourly**: per tenant → loop brand → engine dispatcher → upsert ke `hourly_snapshots` |
-| `5 1-23 * * *` | `:05` jam 1-23 | **Recovery + Send**: forward-fill missing hours → render Tim report PNG → kirim ke `tg_report_group` |
+| `3 1-23 * * *` | `:03` jam 1-23 | **Pipeline utama (1 step)**: refresh session asia77 → fetch fresh dari panel → recovery missing hours → render PNG → kirim ke Telegram. Data di report = baru saja di-fetch (~detik, bukan 5 menit stale). `:03` dipilih supaya panel punya 3 menit setelah pergantian jam untuk finalize angka. |
 | `5 0 * * *` | `00:05` | **FINISH + Referral**: fetch FINISH (snapshot kemarin hari penuh) → kirim Tim report FINISH → trigger `sendReferralReports` per divisi |
-| `*/10 * * * *` | every 10 min | **Keepalive**: ping panel asia77 supaya cookie session tidak expire (syntech tidak butuh, JWT stateless) |
+| `*/10 * * * *` | every 10 min | **Keepalive**: ping panel asia77 (`/clearMessage` + `/sse/user/balance`) supaya cookie session tidak expire. Syntech tidak butuh (JWT stateless). Alert ke Telegram kalau 3x gagal berturut (30 menit). |
 | `30 0 1 * *` | tanggal 1 jam `00:30` | **Cleanup logs**: `DELETE FROM job_logs WHERE created_at < date_trunc('month', NOW())` |
 
-### Alur fetch single brand
+### Alur pipeline hourly (:03)
 
 ```
-tenant N ──> getBrands(N) ──> per brand:
-  ├── if engine='asia77':
-  │     fetchAsia77Daily(brand)  → POST /daily/info/list  → dpapp
-  │     fetchAsia77Regis(brand)  → POST /memberlist (paginated) → count
-  │
-  └── if engine='syntech':
-        getToken(domain, user, pass, pin, apiKey, hash)  → JWT cached per-domain
-        fetchSyntechDaily(brand) → GET /services/transactions/summary → deposit_action_accepted_count
-        fetchSyntechRegis(brand) → GET /services/players → meta.total
+tenant N ──> getBrands(N) ──>
 
-  └── upsertSnapshot(brand, date, hour, trx, regis, tenantId)
+  Step 0: Pre-fetch refresh (asia77 only)
+    └── per brand asia77: keepaliveAsia77(clearMessage + sse/user/balance)
+        → invalidate server-side cache panel supaya fetch return data paling fresh
+
+  Step 1: Fetch fresh dari panel
+    ├── if engine='asia77':
+    │     fetchAsia77Daily(brand)  → POST /daily/info/list  → dpapp
+    │     fetchAsia77Regis(brand)  → POST /memberlist (paginated) → count
+    │
+    └── if engine='syntech':
+          getToken(domain, user, pass, pin, apiKey, hash)  → JWT cached per-domain
+          fetchSyntechDaily(brand) → GET /services/transactions/summary → deposit_action_accepted_count
+          fetchSyntechRegis(brand) → GET /services/players → meta.total
+
+    └── upsertSnapshot(brand, date, hour, trx, regis, tenantId)
+
+  Step 2: Recovery missing hours (forward-fill)
+
+  Step 3: Render HTML → Puppeteer screenshot → sendPhoto ke Telegram
+          (data di report = baru saja di-fetch di step 1, ~detik bukan menit)
 ```
 
 ### Alur referral fetch
@@ -144,8 +154,8 @@ Untuk panel berbasis Cloudflare yang pakai session cookie. Implementasi: [src/ap
 **Auth flow:**
 1. User login manual via browser (host yang IP-nya whitelisted, biasanya pakai SSH SOCKS tunnel ke VPS)
 2. Copy cookie dari DevTools → paste di Admin → Brands → Edit → field Cookie Header
-3. **Keepalive cron** ping `/clearMessage` + `/sse/user/balance` setiap 10 menit supaya session tidak expire
-4. Saat session expired (deteksi `ec=undefined` / `ec=-1`), alert ke Telegram → user paste cookie baru
+3. **Keepalive cron** ping `/clearMessage` + `/sse/user/balance` setiap 10 menit supaya session tidak expire (7x ping/jam: 6x keepalive + 1x pre-fetch refresh)
+4. Saat session expired (deteksi `ec=undefined` / `ec=-1`), alert ke Telegram setelah 3x gagal berturut → user paste cookie baru
 
 **Endpoint:**
 - `POST /daily/info/list` → `dpapp` = TRX accepted
@@ -514,7 +524,7 @@ systemctl is-enabled postgresql nginx pm2-root
 
 ### Cookie management (asia77)
 
-Cookie panel asia77 expire kalau session idle. Keepalive cron (every 10 min) akan ping panel supaya tidak expire, tapi kalau cookie sudah kadaluarsa total perlu re-paste.
+Cookie panel asia77 expire kalau session idle. Session dijaga aktif oleh **2 mekanisme**: keepalive cron setiap 10 menit + pre-fetch refresh setiap jam di `:03`. Total 7 ping/jam — session dijamin hidup selama cookie valid. Kalau cookie di-revoke oleh panel (login dari device lain / admin panel reset), perlu re-paste.
 
 **Cara login ulang dari host yang IP-nya tidak whitelisted (misal laptop lokal):**
 
