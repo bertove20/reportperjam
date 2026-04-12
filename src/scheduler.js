@@ -26,11 +26,37 @@ export async function startScheduler() {
   // Use default timezone, individual tenants can override
   const defaultTz = process.env.TZ || 'Asia/Phnom_Penh';
 
-  // ─── :03 Refresh + Fetch + Recovery + Report (jam 1-23) ───
-  // Pipeline lengkap: refresh session → fetch fresh → isi jam kosong → render → kirim.
-  // Angka di report = data yang BARU SAJA di-fetch (~detik sebelum render).
-  // Dijalankan di :03 supaya panel punya waktu 3 menit setelah pergantian jam
-  // untuk finalize angka kumulatifnya.
+  // ─── :00 Syntech pipeline (jam 1-23) ───
+  // Syntech panel sudah real-time (tidak ada server-side cache), jadi fetch
+  // langsung di :00 tanpa delay. Snapshot tepat di pergantian jam = paling akurat.
+  // Hanya proses brand engine='syntech', asia77 di-skip (punya pipeline sendiri di :03).
+  jobs.push(cron.schedule('0 1-23 * * *', async () => {
+    const tenants = await getActiveTenants();
+    for (const tenant of tenants) {
+      try {
+        const now = DateTime.now();
+        const hour = now.hour;
+        const dateStr = now.toDateStr();
+
+        const allBrands = await getBrands(tenant.id);
+        const syntechBrands = allBrands.filter(b => b.engine === 'syntech');
+        if (syntechBrands.length === 0) continue;
+
+        logger.info({ tenant: tenant.slug, hour, engine: 'syntech' }, 'Syntech fetch starting');
+        await fetchAllBrands(dateStr, hour, tenant.id, 'syntech');
+
+        await recoverMissingHours(dateStr, hour, tenant.id);
+        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id, 'syntech');
+      } catch (err) {
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Syntech fetch+report failed');
+      }
+    }
+  }, { timezone: defaultTz }));
+
+  // ─── :03 Asia77 pipeline (jam 1-23) ───
+  // Asia77 panel punya server-side cache yang perlu di-refresh dulu sebelum fetch.
+  // Pipeline: refresh session → fetch → recovery → render → kirim.
+  // :03 dipilih supaya panel punya 3 menit setelah pergantian jam untuk finalize angka.
   jobs.push(cron.schedule('3 1-23 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
@@ -39,25 +65,26 @@ export async function startScheduler() {
         const hour = now.hour;
         const dateStr = now.toDateStr();
 
-        // 0. Pre-fetch refresh: ping panel asia77 supaya server-side cache
-        //    di-invalidate dan fetch berikutnya return data paling fresh.
-        //    Syntech tidak perlu (stateless JWT, tidak ada server-side cache).
-        const brands = await getBrands(tenant.id);
-        for (const brand of brands.filter(b => b.engine === 'asia77')) {
+        const allBrands = await getBrands(tenant.id);
+        const asia77Brands = allBrands.filter(b => b.engine === 'asia77');
+        if (asia77Brands.length === 0) continue;
+
+        // 0. Pre-fetch refresh: invalidate panel cache
+        for (const brand of asia77Brands) {
           await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
         }
 
-        // 1. Fetch fresh dari panel → simpan ke DB
-        logger.info({ tenant: tenant.slug, hour }, 'Fetch starting');
-        await fetchAllBrands(dateStr, hour, tenant.id);
+        // 1. Fetch fresh
+        logger.info({ tenant: tenant.slug, hour, engine: 'asia77' }, 'Asia77 fetch starting');
+        await fetchAllBrands(dateStr, hour, tenant.id, 'asia77');
 
-        // 2. Auto-recovery: isi jam kosong sebelum report supaya laporan lengkap
+        // 2. Recovery
         await recoverMissingHours(dateStr, hour, tenant.id);
 
-        // 3. Render + kirim report (data yang baru saja di-fetch)
-        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id);
+        // 3. Render + send
+        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id, 'asia77');
       } catch (err) {
-        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant fetch+report failed');
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Asia77 fetch+report failed');
       }
     }
   }, { timezone: defaultTz }));

@@ -28,10 +28,12 @@ async function withRetry(fn, label, retries = 3) {
 
 /**
  * Fetch semua brand untuk jam biasa (hours 1-23)
+ * @param {string} [engineFilter] — 'asia77'|'syntech'|null. Kalau di-set, hanya fetch brand dengan engine itu.
  */
-export async function fetchAllBrands(dateStr, hour, tenantId = null) {
+export async function fetchAllBrands(dateStr, hour, tenantId = null, engineFilter = null) {
   const dt = new DateTime();
-  const brands = await getBrands(tenantId);
+  let brands = await getBrands(tenantId);
+  if (engineFilter) brands = brands.filter(b => b.engine === engineFilter);
   const errors = [];
 
   for (const brand of brands) {

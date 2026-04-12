@@ -18,15 +18,17 @@ const DELAY_BETWEEN_BRANDS = 3000;
 
 /**
  * Kirim Tim report untuk semua brand (atau satu brand spesifik)
+ * @param {string} [engineFilter] — 'asia77'|'syntech'|null. Kalau di-set, hanya proses brand dengan engine itu.
  */
-export async function sendTimReports(currentHour, todayDate, yesterdayDate, brandKey = null, tenantId = null) {
+export async function sendTimReports(currentHour, todayDate, yesterdayDate, brandKey = null, tenantId = null, engineFilter = null) {
   const groupId = await getSetting('tg_report_group', 'report', tenantId) || process.env.TG_REPORT_GROUP;
   if (!groupId) {
     logger.warn('TG_REPORT_GROUP not set — skipping Tim reports');
     return;
   }
 
-  const allBrands = await getBrands(tenantId);
+  let allBrands = await getBrands(tenantId);
+  if (engineFilter) allBrands = allBrands.filter(b => b.engine === engineFilter);
   const brands = brandKey ? allBrands.filter(b => b.key === brandKey) : allBrands;
   let successCount = 0;
 
