@@ -26,11 +26,11 @@ export async function startScheduler() {
   // Use default timezone, individual tenants can override
   const defaultTz = process.env.TZ || 'Asia/Phnom_Penh';
 
-  // ─── :03 Fetch + Recovery + Report (jam 1-23) ───
-  // Gabungan 1 pipeline: fetch fresh dari panel → isi jam kosong → render → kirim.
-  // Angka di report = data yang BARU SAJA di-fetch (~detik sebelum render),
-  // bukan data 5 menit lalu. Dijalankan di :03 supaya panel punya waktu
-  // 3 menit setelah pergantian jam untuk finalize angka kumulatifnya.
+  // ─── :03 Refresh + Fetch + Recovery + Report (jam 1-23) ───
+  // Pipeline lengkap: refresh session → fetch fresh → isi jam kosong → render → kirim.
+  // Angka di report = data yang BARU SAJA di-fetch (~detik sebelum render).
+  // Dijalankan di :03 supaya panel punya waktu 3 menit setelah pergantian jam
+  // untuk finalize angka kumulatifnya.
   jobs.push(cron.schedule('3 1-23 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
@@ -38,6 +38,14 @@ export async function startScheduler() {
         const now = DateTime.now();
         const hour = now.hour;
         const dateStr = now.toDateStr();
+
+        // 0. Pre-fetch refresh: ping panel asia77 supaya server-side cache
+        //    di-invalidate dan fetch berikutnya return data paling fresh.
+        //    Syntech tidak perlu (stateless JWT, tidak ada server-side cache).
+        const brands = await getBrands(tenant.id);
+        for (const brand of brands.filter(b => b.engine === 'asia77')) {
+          await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
+        }
 
         // 1. Fetch fresh dari panel → simpan ke DB
         logger.info({ tenant: tenant.slug, hour }, 'Fetch starting');
