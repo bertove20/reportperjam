@@ -82,37 +82,42 @@ tenant ──┬── divisions ──┬── users
 
 | Cron | Waktu | Aksi |
 |---|---|---|
-| `3 1-23 * * *` | `:03` jam 1-23 | **Pipeline utama (1 step)**: refresh session asia77 → fetch fresh dari panel → recovery missing hours → render PNG → kirim ke Telegram. Data di report = baru saja di-fetch (~detik, bukan 5 menit stale). `:03` dipilih supaya panel punya 3 menit setelah pergantian jam untuk finalize angka. |
+| `0 1-23 * * *` | `:00` jam 1-23 | **Syntech fetch**: fetch brand syntech saja (panel real-time, tidak ada cache). Snapshot tepat di pergantian jam = paling akurat. **Belum kirim report** — data disimpan ke DB, report ditahan sampai `:03`. |
+| `3 1-23 * * *` | `:03` jam 1-23 | **Asia77 fetch + SEMUA brand kirim report**: refresh session asia77 → fetch asia77 brands (data fresh setelah cache clear) → recovery missing hours (semua engine) → render + kirim report **semua brand** (syntech + asia77 bareng). Hasilnya semua report muncul di waktu yang sama di Telegram. |
 | `5 0 * * *` | `00:05` | **FINISH + Referral**: fetch FINISH (snapshot kemarin hari penuh) → kirim Tim report FINISH → trigger `sendReferralReports` per divisi |
-| `*/10 * * * *` | every 10 min | **Keepalive**: ping panel asia77 (`/clearMessage` + `/sse/user/balance`) supaya cookie session tidak expire. Syntech tidak butuh (JWT stateless). Alert ke Telegram kalau 3x gagal berturut (30 menit). |
+| `*/10 * * * *` | every 10 min | **Keepalive**: ping panel asia77 (`/clearMessage` + `/sse/user/balance`) supaya cookie session tidak expire (7 ping/jam: 6x dedicated + 1x pre-fetch refresh). Syntech tidak butuh (JWT stateless). Alert ke Telegram kalau 3x gagal berturut (30 menit). |
 | `30 0 1 * *` | tanggal 1 jam `00:30` | **Cleanup logs**: `DELETE FROM job_logs WHERE created_at < date_trunc('month', NOW())` |
 
-### Alur pipeline hourly (:03)
+### Alur pipeline hourly (2 cron, 1 batch kirim)
 
 ```
-tenant N ──> getBrands(N) ──>
+:00 ─── Syntech fetch (cron pertama) ───
+  tenant N → getBrands(N) → filter engine='syntech' →
+    fetchSyntechDaily(brand) → GET /services/transactions/summary → deposit_action_accepted_count
+    fetchSyntechRegis(brand) → GET /services/players → meta.total
+    → upsertSnapshot(brand, date, hour, trx, regis, tenantId)
+    → SIMPAN KE DB SAJA, belum kirim report
+
+:03 ─── Asia77 fetch + SEMUA brand kirim (cron kedua) ───
+  tenant N → getBrands(N) →
 
   Step 0: Pre-fetch refresh (asia77 only)
     └── per brand asia77: keepaliveAsia77(clearMessage + sse/user/balance)
-        → invalidate server-side cache panel supaya fetch return data paling fresh
+        → invalidate server-side cache panel
 
-  Step 1: Fetch fresh dari panel
-    ├── if engine='asia77':
-    │     fetchAsia77Daily(brand)  → POST /daily/info/list  → dpapp
-    │     fetchAsia77Regis(brand)  → POST /memberlist (paginated) → count
-    │
-    └── if engine='syntech':
-          getToken(domain, user, pass, pin, apiKey, hash)  → JWT cached per-domain
-          fetchSyntechDaily(brand) → GET /services/transactions/summary → deposit_action_accepted_count
-          fetchSyntechRegis(brand) → GET /services/players → meta.total
+  Step 1: Fetch asia77 brands (syntech sudah di-fetch di :00)
+    └── fetchAsia77Daily(brand) → POST /daily/info/list → dpapp
+        fetchAsia77Regis(brand) → POST /memberlist (paginated) → count
+        → upsertSnapshot(brand, date, hour, trx, regis, tenantId)
 
-    └── upsertSnapshot(brand, date, hour, trx, regis, tenantId)
+  Step 2: Recovery missing hours — semua engine (forward-fill)
 
-  Step 2: Recovery missing hours (forward-fill)
-
-  Step 3: Render HTML → Puppeteer screenshot → sendPhoto ke Telegram
-          (data di report = baru saja di-fetch di step 1, ~detik bukan menit)
+  Step 3: Render + kirim report SEMUA brand (tanpa filter engine)
+    └── loop semua brand (syntech + asia77) → render HTML → screenshot PNG → sendPhoto
+        → semua report muncul BARENG di Telegram group (~:03-:05)
 ```
+
+**Kenapa 2 cron tapi 1 batch kirim**: setiap engine punya timing fetch optimal yang berbeda (syntech real-time di `:00`, asia77 perlu cache refresh jadi `:03`). Tapi report harus muncul bersamaan di Telegram supaya operator tidak bingung lihat report terpecah. Solusinya: fetch di waktu masing-masing, kirim bareng di `:03`.
 
 ### Alur referral fetch
 
