@@ -32,6 +32,44 @@ function fmtDelta(num) {
   return sign + num.toLocaleString('id-ID');
 }
 
+function fmtPct(today, yesterday) {
+  if (!yesterday || yesterday === 0) return today > 0 ? '+100%' : '0%';
+  const pct = ((today - yesterday) / yesterday * 100).toFixed(1);
+  const sign = pct > 0 ? '+' : '';
+  return `${sign}${pct}%`;
+}
+
+/**
+ * Build ringkasan teks untuk FINISH report
+ * Seolah-olah mereview performa hari ini vs kemarin
+ */
+function buildFinishSummary(sb) {
+  const trxPct = fmtPct(sb.trxToday, sb.trxYesterday);
+  const regisPct = fmtPct(sb.regisToday, sb.regisYesterday);
+
+  const trxNaik = sb.trxGap > 0;
+  const trxTurun = sb.trxGap < 0;
+  const regisNaik = sb.regisGap > 0;
+  const regisTurun = sb.regisGap < 0;
+
+  const trxKata = trxNaik ? 'kenaikan' : trxTurun ? 'penurunan' : 'tidak ada perubahan';
+  const regisKata = regisNaik ? 'kenaikan' : regisTurun ? 'penurunan' : 'tidak ada perubahan';
+  const trxIcon = trxNaik ? '📈' : trxTurun ? '📉' : '➡️';
+  const regisIcon = regisNaik ? '📈' : regisTurun ? '📉' : '➡️';
+  const trxColor = trxNaik ? '#059669' : trxTurun ? '#dc2626' : '#6b7280';
+  const regisColor = regisNaik ? '#059669' : regisTurun ? '#dc2626' : '#6b7280';
+
+  return `
+<!-- FINISH SUMMARY -->
+<div style="margin:8px 16px;padding:10px 14px;background:#f8fafc;border-left:4px solid #6366f1;border-radius:6px;">
+  <div style="font-size:11px;font-weight:700;color:#4338ca;margin-bottom:6px;">📋 RINGKASAN HARI INI</div>
+  <div style="font-size:11px;color:#374151;line-height:1.7;">
+    ${trxIcon} <b>Transaksi</b> mengalami <b style="color:${trxColor};">${trxKata} ${trxPct}</b> — dari <b>${fmt(sb.trxYesterday)}</b> kemarin menjadi <b>${fmt(sb.trxToday)}</b> hari ini (selisih <b style="color:${trxColor};">${fmtDelta(sb.trxGap)}</b>).<br>
+    ${regisIcon} <b>Registrasi</b> mengalami <b style="color:${regisColor};">${regisKata} ${regisPct}</b> — dari <b>${fmt(sb.regisYesterday)}</b> kemarin menjadi <b>${fmt(sb.regisToday)}</b> hari ini (selisih <b style="color:${regisColor};">${fmtDelta(sb.regisGap)}</b>).
+  </div>
+</div>`;
+}
+
 /**
  * Build full HTML string for Tim report
  * 
@@ -185,6 +223,8 @@ export function buildTimHtml(brand, data, dateStr, currentHour) {
     ${tableRowsHtml}
   </tbody>
 </table>
+
+${currentHour === 0 ? buildFinishSummary(sb) : ''}
 
 <div style="padding:6px 16px;font-size:9px;color:#9ca3af;display:flex;justify-content:space-between;">
   <span>Tim Report Bot</span>
