@@ -26,37 +26,30 @@ export async function startScheduler() {
   // Use default timezone, individual tenants can override
   const defaultTz = process.env.TZ || 'Asia/Phnom_Penh';
 
-  // ─── :00 Fetch (jam 1-23) — iterate all tenants ───
-  jobs.push(cron.schedule('0 1-23 * * *', async () => {
+  // ─── :03 Fetch + Recovery + Report (jam 1-23) ───
+  // Gabungan 1 pipeline: fetch fresh dari panel → isi jam kosong → render → kirim.
+  // Angka di report = data yang BARU SAJA di-fetch (~detik sebelum render),
+  // bukan data 5 menit lalu. Dijalankan di :03 supaya panel punya waktu
+  // 3 menit setelah pergantian jam untuk finalize angka kumulatifnya.
+  jobs.push(cron.schedule('3 1-23 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
       try {
-        const tz = await getSetting('timezone', 'report', tenant.id) || defaultTz;
         const now = DateTime.now();
         const hour = now.hour;
         const dateStr = now.toDateStr();
 
+        // 1. Fetch fresh dari panel → simpan ke DB
         logger.info({ tenant: tenant.slug, hour }, 'Fetch starting');
         await fetchAllBrands(dateStr, hour, tenant.id);
+
+        // 2. Auto-recovery: isi jam kosong sebelum report supaya laporan lengkap
+        await recoverMissingHours(dateStr, hour, tenant.id);
+
+        // 3. Render + kirim report (data yang baru saja di-fetch)
+        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id);
       } catch (err) {
-        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant fetch failed');
-      }
-    }
-  }, { timezone: defaultTz }));
-
-  // ─── :05 Recovery + Report (jam 1-23) ───
-  jobs.push(cron.schedule('5 1-23 * * *', async () => {
-    const tenants = await getActiveTenants();
-    for (const tenant of tenants) {
-      try {
-        const now = DateTime.now();
-
-        // Auto-recovery: isi jam kosong sebelum report supaya laporan lengkap
-        await recoverMissingHours(now.toDateStr(), now.hour, tenant.id);
-
-        await sendTimReports(now.hour, now.toDateStr(), now.yesterday().toDateStr(), null, tenant.id);
-      } catch (err) {
-        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant report failed');
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant fetch+report failed');
       }
     }
   }, { timezone: defaultTz }));
