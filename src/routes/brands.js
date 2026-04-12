@@ -5,7 +5,6 @@
 import { getAllBrands, getBrandByKey, createBrand, updateBrand, deleteBrand, hardDeleteBrand, updateBrandCookie } from '../storage/brand-store.js';
 import { fetchAsia77Daily, fetchAsia77Regis } from '../api/asia77-engine.js';
 import { fetchSyntechDaily, fetchSyntechRegis } from '../api/syntech-engine.js';
-// idns-engine di-import dynamic supaya error IDNS tidak break asia77/syntech
 import { encrypt, decrypt } from '../utils/crypto.js';
 import { DateTime } from '../utils/datetime.js';
 import { logger } from '../logger.js';
@@ -225,15 +224,6 @@ export default async function brandRoutes(app) {
         const regis = await fetchSyntechRegis(config, startISO, endISO);
 
         return { success: true, engine: 'syntech', trx, regis, raw: daily };
-      } else if (brand.engine === 'idns') {
-        const idns = await import('../api/idns-engine.js');
-        const dt = new DateTime();
-        const dateStr = dt.toDateStr();
-
-        const trx = await idns.fetchIdnsDaily(brand.key, brand.domain, brand.cookie_header, brand.user_id, dateStr);
-        const regis = await idns.fetchIdnsRegis(brand.key, brand.domain, brand.cookie_header, dateStr);
-
-        return { success: true, engine: 'idns', trx, regis };
       } else {
         return reply.code(400).send({ success: false, error: `Unknown engine: ${brand.engine}` });
       }

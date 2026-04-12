@@ -162,7 +162,7 @@ export async function initDatabase() {
       id SERIAL PRIMARY KEY,
       key TEXT NOT NULL,
       name TEXT NOT NULL,
-      engine TEXT NOT NULL CHECK(engine IN ('asia77', 'syntech', 'idns')),
+      engine TEXT NOT NULL CHECK(engine IN ('asia77', 'syntech')),
       domain TEXT NOT NULL,
       tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       is_active INTEGER DEFAULT 1,
@@ -432,12 +432,6 @@ async function migrateToMultiTenant() {
     'ALTER TABLE referral_codes ADD COLUMN IF NOT EXISTS referral_type TEXT',
     'ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS auth_api_key TEXT',
     'ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS auth_hash TEXT',
-    // Expand engine CHECK to include idns (drop old + add new — safe if constraint doesn't exist)
-    `DO $$ BEGIN
-       ALTER TABLE report_brands DROP CONSTRAINT IF EXISTS report_brands_engine_check;
-       ALTER TABLE report_brands ADD CONSTRAINT report_brands_engine_check CHECK(engine IN ('asia77', 'syntech', 'idns'));
-     EXCEPTION WHEN others THEN NULL;
-     END $$`,
   ];
 
   // Referral codes table (brand → referral → division mapping)

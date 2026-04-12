@@ -10,7 +10,6 @@
 import { fetchAllBrands, fetchAllBrandsFinish } from '../api/fetch-brand.js';
 import { fetchAsia77Daily, fetchAsia77Regis, fetchAllMembersWithTime, fetchAsia77DepositHistory } from '../api/asia77-engine.js';
 import { fetchSyntechDaily, fetchSyntechRegis, fetchSyntechPlayersWithTime } from '../api/syntech-engine.js';
-// idns-engine di-import dynamic supaya error IDNS tidak break asia77/syntech
 import { sendTimReports } from '../tim/tim-orchestrator.js';
 import { sendReferralReports, backfillReferralSnapshots, sendSingleReferralReport, backfillSingleReferral } from '../tim/referral-report-orchestrator.js';
 import { upsertSnapshot, upsertSnapshotNullable, forceUpsertSnapshot, queryOne, queryRows } from '../storage/postgres.js';
@@ -284,57 +283,6 @@ export default async function actionRoutes(app) {
             saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(currentRegis)}`);
           }
 
-        // ═══════════════════════════════════════
-        // ENGINE: IDNS
-        // TRX dari /deposit/history detail (count approved + parse timestamps)
-        // REGIS dari /player/list (parse Tanggal Daftar + timestamps)
-        // ═══════════════════════════════════════
-        } else if (brand.engine === 'idns') {
-          const idns = await import('../api/idns-engine.js');
-
-          // 1. Fetch player list → REGIS per jam
-          const players = await idns.fetchIdnsPlayersWithTime(
-            brand.key, brand.domain, brand.cookieHeader, targetDate
-          );
-          const totalRegis = players.length;
-          // Reuse syntech-compatible buildHourlyRegisFromCreatedAt (players have created_at field)
-          const hourlyRegis = buildHourlyRegisFromCreatedAt(players);
-          saved.push(`Fetch ${totalRegis} players dari /player/list`);
-
-          // 2. Fetch deposit history → TRX per jam
-          const deposits = await idns.fetchIdnsDepositHistory(
-            brand.key, brand.domain, brand.cookieHeader, brand.userId, targetDate
-          );
-          const hourlyTrx = buildHourlyTrxFromIdns(deposits);
-          saved.push(`Fetch ${deposits.length} deposits dari /deposit/history`);
-
-          // 3. Simpan per jam
-          let filled = 0;
-          for (let h = 1; h <= maxHour; h++) {
-            const regis = hourlyRegis[h] || 0;
-            const trxH = hourlyTrx[h] || 0;
-            await upsertSnapshot(brand.key, targetDate, h, trxH, regis, tid);
-            filled++;
-          }
-          saved.push(`Per jam: ${filled} jam terisi`);
-
-          // 4. Simpan FINISH
-          if (!isToday) {
-            const totalTrx = hourlyTrx[24] || deposits.filter(d => d.approved).length;
-            await upsertSnapshot(brand.key, targetDate, 24, totalTrx, totalRegis, tid);
-            saved.push(`FINISH: TRX=${fmtNum(totalTrx)} REGIS=${fmtNum(totalRegis)}`);
-          }
-
-          // 5. Jika hari ini, update snapshot jam aktif
-          if (isToday && now.hour > 0) {
-            const todayTrx = await idns.fetchIdnsDaily(
-              brand.key, brand.domain, brand.cookieHeader, brand.userId, todayStr
-            );
-            const currentRegis = hourlyRegis[now.hour] || totalRegis;
-            await upsertSnapshot(brand.key, todayStr, now.hour, todayTrx, currentRegis, tid);
-            saved.push(`Jam ${now.hour}: TRX=${fmtNum(todayTrx)} REGIS=${fmtNum(currentRegis)}`);
-          }
-
         } else {
           results.push({ brand: brand.key, success: false, message: `Backfill belum support engine ${brand.engine}` });
           continue;
@@ -586,31 +534,6 @@ function buildHourlyTrx(deposits) {
   const counts = new Array(24).fill(0);
   for (const dp of deposits) {
     const match = dp.rcdtm?.match(/(\d{2}):(\d{2}):(\d{2})$/);
-    if (match) counts[parseInt(match[1])]++;
-  }
-
-  const cumulative = {};
-  let total = 0;
-  for (let h = 1; h <= 23; h++) {
-    total += counts[h - 1];
-    cumulative[h] = total;
-  }
-  total += counts[23];
-  cumulative[24] = total;
-
-  return cumulative;
-}
-
-/**
- * Parse IDNS deposit detail → kumulatif TRX per jam
- * datetime format: "DD/MM/YYYY HH:MM:SS"
- * Hanya hitung yang approved.
- */
-function buildHourlyTrxFromIdns(deposits) {
-  const counts = new Array(24).fill(0);
-  for (const dp of deposits) {
-    if (!dp.approved) continue;
-    const match = dp.datetime?.match(/(\d{2}):(\d{2}):(\d{2})$/);
     if (match) counts[parseInt(match[1])]++;
   }
 

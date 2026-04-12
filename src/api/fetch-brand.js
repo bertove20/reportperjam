@@ -7,20 +7,12 @@
 
 import { fetchAsia77Daily, fetchAsia77Regis } from './asia77-engine.js';
 import { fetchSyntechDaily, fetchSyntechRegis } from './syntech-engine.js';
-// idns-engine di-import secara dynamic (lazy) supaya error di modul IDNS
-// tidak mengganggu asia77/syntech. Lihat loadIdnsEngine() di bawah.
 import { upsertSnapshot, queryRows } from '../storage/postgres.js';
 import { getBrands } from '../tim/brand-configs.js';
 import { insertLog } from '../storage/log-store.js';
 import { sendFetchErrorAlert } from '../tim/tim-alert.js';
 import { DateTime } from '../utils/datetime.js';
 import { logger } from '../logger.js';
-
-let _idnsEngine = null;
-async function loadIdnsEngine() {
-  if (!_idnsEngine) _idnsEngine = await import('./idns-engine.js');
-  return _idnsEngine;
-}
 
 async function withRetry(fn, label, retries = 3) {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -80,17 +72,6 @@ export async function fetchAllBrands(dateStr, hour, tenantId = null, engineFilte
           `${brand.key} regis`
         );
 
-      } else if (brand.engine === 'idns') {
-        const idns = await loadIdnsEngine();
-        trx = await withRetry(
-          () => idns.fetchIdnsDaily(brand.key, brand.domain, brand.cookieHeader, brand.userId, dateStr),
-          `${brand.key} daily`
-        );
-
-        regis = await withRetry(
-          () => idns.fetchIdnsRegis(brand.key, brand.domain, brand.cookieHeader, dateStr),
-          `${brand.key} regis`
-        );
       }
 
       await upsertSnapshot(brand.key, dateStr, hour, trx, regis, tenantId);
@@ -156,17 +137,6 @@ export async function fetchAllBrandsFinish(yesterdayDateStr, tenantId = null) {
           `${brand.key} finish regis`
         );
 
-      } else if (brand.engine === 'idns') {
-        const idns = await loadIdnsEngine();
-        trx = await withRetry(
-          () => idns.fetchIdnsDaily(brand.key, brand.domain, brand.cookieHeader, brand.userId, yesterdayDateStr),
-          `${brand.key} finish`
-        );
-
-        regis = await withRetry(
-          () => idns.fetchIdnsRegis(brand.key, brand.domain, brand.cookieHeader, yesterdayDateStr),
-          `${brand.key} finish regis`
-        );
       }
 
       await upsertSnapshot(brand.key, yesterdayDateStr, 24, trx, regis, tenantId);

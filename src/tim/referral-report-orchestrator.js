@@ -87,12 +87,6 @@ async function fetchReferralMembers(brand, targetDate, mode, referralCode) {
     });
   }
 
-  if (brand.engine === 'idns') {
-    // IDNS referral support belum diimplementasi — panel punya /referral/list
-    // tapi endpoint belum di-investigate. Skip dulu, bisa ditambah nanti.
-    throw new Error(`Engine idns belum support referral fetch — fitur dalam pengembangan`);
-  }
-
   throw new Error(`Engine ${brand.engine} belum support referral fetch`);
 }
 
