@@ -6,6 +6,7 @@ import { brands as brandsApi } from '../../api/client'
 const ENGINES = [
   { value: 'asia77', label: 'Asia77 (Cookie-based)' },
   { value: 'syntech', label: 'Syntech (JWT-based)' },
+  { value: 'idns', label: 'IDNS/iSports (Cookie + HTML)' },
 ]
 
 const DEFAULT_COLORS = ['#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2', '#2563eb', '#db2777', '#475569']
@@ -190,6 +191,30 @@ export default function BrandForm() {
               <p className="text-xs text-gray-400 mt-1">
                 Beberapa panel butuh field <code>hash</code> di body login (session fingerprint).
                 Cari di DevTools &gt; Network &gt; Request Payload saat klik Login. Kosongkan kalau panel tidak butuh.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {form.engine === 'idns' && (
+          <div className="bg-white rounded-lg border p-4 space-y-4">
+            <h2 className="font-semibold text-gray-900">IDNS/iSports Settings</h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Whitelabel ID</label>
+              <input type="number" value={form.user_id} onChange={setNum('user_id')}
+                className="w-full border rounded px-3 py-2 text-sm" placeholder="331" />
+              <p className="text-xs text-gray-400 mt-1">
+                ID di URL deposit: /deposit/history/2026-04-12/<b>331</b>
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cookie Header</label>
+              <textarea value={form.cookie_header} onChange={set('cookie_header')} rows={3}
+                className="w-full border rounded px-3 py-2 text-sm font-mono"
+                placeholder="laravel_session=xxx; XSRF-TOKEN=yyy" />
+              <p className="text-xs text-gray-400 mt-1">
+                Login manual di browser &gt; DevTools &gt; Network &gt; Copy cookie header.
+                Butuh minimal <code>laravel_session</code> dan <code>XSRF-TOKEN</code>.
               </p>
             </div>
           </div>

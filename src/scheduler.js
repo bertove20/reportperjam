@@ -12,6 +12,7 @@ import { sendTimReports } from './tim/tim-orchestrator.js';
 import { sendReferralReports } from './tim/referral-report-orchestrator.js';
 import { cleanLogsBeforeCurrentMonth } from './storage/log-store.js';
 import { keepaliveAsia77 } from './api/asia77-engine.js';
+// idns-engine di-import dynamic supaya error IDNS tidak break asia77/syntech
 import { getBrands } from './tim/brand-configs.js';
 import { DateTime } from './utils/datetime.js';
 import { logger } from './logger.js';
@@ -67,17 +68,29 @@ export async function startScheduler() {
         const hour = now.hour;
         const dateStr = now.toDateStr();
 
-        // 0. Pre-fetch refresh asia77
+        // 0. Pre-fetch refresh cookie-based engines (asia77 + idns)
         const allBrands = await getBrands(tenant.id);
         const asia77Brands = allBrands.filter(b => b.engine === 'asia77');
+        const idnsBrands = allBrands.filter(b => b.engine === 'idns');
+
         for (const brand of asia77Brands) {
           await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
         }
+        if (idnsBrands.length > 0) {
+          const { keepaliveIdns } = await import('./api/idns-engine.js');
+          for (const brand of idnsBrands) {
+            await keepaliveIdns(brand.key, brand.domain, brand.cookieHeader);
+          }
+        }
 
-        // 1. Fetch asia77 brands (syntech sudah di-fetch di :00)
+        // 1. Fetch cookie-based brands (syntech sudah di-fetch di :00)
         if (asia77Brands.length > 0) {
           logger.info({ tenant: tenant.slug, hour, engine: 'asia77' }, 'Asia77 fetch starting');
           await fetchAllBrands(dateStr, hour, tenant.id, 'asia77');
+        }
+        if (idnsBrands.length > 0) {
+          logger.info({ tenant: tenant.slug, hour, engine: 'idns' }, 'IDNS fetch starting');
+          await fetchAllBrands(dateStr, hour, tenant.id, 'idns');
         }
 
         // 2. Recovery (semua engine)
@@ -120,11 +133,18 @@ export async function startScheduler() {
   jobs.push(cron.schedule('*/10 * * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
-      const brands = (await getBrands(tenant.id)).filter(b => b.engine === 'asia77');
+      const brands = (await getBrands(tenant.id)).filter(b => b.engine === 'asia77' || b.engine === 'idns');
       const failedBrands = [];
 
+      let keepaliveIdnsFn = null;
       for (const brand of brands) {
-        const result = await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
+        let result;
+        if (brand.engine === 'idns') {
+          if (!keepaliveIdnsFn) keepaliveIdnsFn = (await import('./api/idns-engine.js')).keepaliveIdns;
+          result = await keepaliveIdnsFn(brand.key, brand.domain, brand.cookieHeader);
+        } else {
+          result = await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
+        }
         const key = brand.key;
 
         if (result.ok) {

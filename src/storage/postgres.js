@@ -162,7 +162,7 @@ export async function initDatabase() {
       id SERIAL PRIMARY KEY,
       key TEXT NOT NULL,
       name TEXT NOT NULL,
-      engine TEXT NOT NULL CHECK(engine IN ('asia77', 'syntech')),
+      engine TEXT NOT NULL CHECK(engine IN ('asia77', 'syntech', 'idns')),
       domain TEXT NOT NULL,
       tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE,
       is_active INTEGER DEFAULT 1,
@@ -192,7 +192,8 @@ export async function initDatabase() {
       deposit_accepted_count INTEGER,
       regis_total INTEGER,
       created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      CONSTRAINT uq_snapshots_tenant UNIQUE (tenant_id, brand, date, hour)
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_snapshots_tenant_brand ON hourly_snapshots(tenant_id, brand, date)`);
@@ -431,6 +432,12 @@ async function migrateToMultiTenant() {
     'ALTER TABLE referral_codes ADD COLUMN IF NOT EXISTS referral_type TEXT',
     'ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS auth_api_key TEXT',
     'ALTER TABLE report_brands ADD COLUMN IF NOT EXISTS auth_hash TEXT',
+    // Expand engine CHECK to include idns (drop old + add new — safe if constraint doesn't exist)
+    `DO $$ BEGIN
+       ALTER TABLE report_brands DROP CONSTRAINT IF EXISTS report_brands_engine_check;
+       ALTER TABLE report_brands ADD CONSTRAINT report_brands_engine_check CHECK(engine IN ('asia77', 'syntech', 'idns'));
+     EXCEPTION WHEN others THEN NULL;
+     END $$`,
   ];
 
   // Referral codes table (brand → referral → division mapping)
@@ -482,7 +489,19 @@ async function migrateToMultiTenant() {
   // Create new unique constraints with tenant_id
   await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_users_tenant_username ON users(tenant_id, username)').catch(() => {});
   await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_report_brands_tenant_key ON report_brands(tenant_id, key)').catch(() => {});
-  await query('CREATE UNIQUE INDEX IF NOT EXISTS uq_snapshots_tenant ON hourly_snapshots(tenant_id, brand, date, hour)').catch(() => {});
+  // uq_snapshots_tenant harus CONSTRAINT (bukan INDEX) supaya ON CONFLICT ON CONSTRAINT bisa jalan.
+  // Kalau sebelumnya dibuat sebagai INDEX, convert ke CONSTRAINT.
+  await query(`
+    DO $$ BEGIN
+      -- Kalau sudah ada sebagai constraint, skip
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_snapshots_tenant') THEN
+        -- Drop index kalau ada (dari versi lama yang pakai CREATE UNIQUE INDEX)
+        DROP INDEX IF EXISTS uq_snapshots_tenant;
+        -- Buat sebagai constraint
+        ALTER TABLE hourly_snapshots ADD CONSTRAINT uq_snapshots_tenant UNIQUE (tenant_id, brand, date, hour);
+      END IF;
+    END $$
+  `).catch(() => {});
 
   // Create default plan if not exists
   await query(`INSERT INTO plans (name, max_brands, max_users, max_report_brands, price_monthly)
