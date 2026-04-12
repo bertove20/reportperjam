@@ -26,10 +26,10 @@ export async function startScheduler() {
   // Use default timezone, individual tenants can override
   const defaultTz = process.env.TZ || 'Asia/Phnom_Penh';
 
-  // ─── :00 Syntech pipeline (jam 1-23) ───
-  // Syntech panel sudah real-time (tidak ada server-side cache), jadi fetch
-  // langsung di :00 tanpa delay. Snapshot tepat di pergantian jam = paling akurat.
-  // Hanya proses brand engine='syntech', asia77 di-skip (punya pipeline sendiri di :03).
+  // ─── :00 Syntech fetch (jam 1-23) — FETCH ONLY, belum kirim ───
+  // Syntech panel real-time, fetch persis di pergantian jam untuk snapshot paling akurat.
+  // Report BELUM dikirim di sini — ditahan sampai :03 supaya semua brand
+  // (syntech + asia77) terkirim bareng di waktu yang sama ke Telegram group.
   jobs.push(cron.schedule('0 1-23 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
@@ -39,24 +39,26 @@ export async function startScheduler() {
         const dateStr = now.toDateStr();
 
         const allBrands = await getBrands(tenant.id);
-        const syntechBrands = allBrands.filter(b => b.engine === 'syntech');
-        if (syntechBrands.length === 0) continue;
+        if (allBrands.filter(b => b.engine === 'syntech').length === 0) continue;
 
         logger.info({ tenant: tenant.slug, hour, engine: 'syntech' }, 'Syntech fetch starting');
         await fetchAllBrands(dateStr, hour, tenant.id, 'syntech');
-
-        await recoverMissingHours(dateStr, hour, tenant.id);
-        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id, 'syntech');
       } catch (err) {
-        logger.error({ tenant: tenant.slug, err: err.message }, 'Syntech fetch+report failed');
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Syntech fetch failed');
       }
     }
   }, { timezone: defaultTz }));
 
-  // ─── :03 Asia77 pipeline (jam 1-23) ───
-  // Asia77 panel punya server-side cache yang perlu di-refresh dulu sebelum fetch.
-  // Pipeline: refresh session → fetch → recovery → render → kirim.
-  // :03 dipilih supaya panel punya 3 menit setelah pergantian jam untuk finalize angka.
+  // ─── :03 Asia77 fetch + SEMUA brand kirim report (jam 1-23) ───
+  // Pipeline:
+  //   1. Refresh session asia77 (invalidate server cache)
+  //   2. Fetch asia77 brands (data fresh setelah cache clear)
+  //   3. Recovery missing hours (semua engine)
+  //   4. Kirim report SEMUA brand (syntech data sudah di-fetch di :00, asia77 baru saja)
+  //
+  // Hasilnya: semua report (syntech + asia77) terkirim di waktu yang sama ke Telegram.
+  // Syntech data maks 3 menit stale (fetch :00, render :03) — acceptable karena
+  // angka kumulatif panel syntech tidak berubah drastis dalam 3 menit.
   jobs.push(cron.schedule('3 1-23 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
@@ -65,26 +67,26 @@ export async function startScheduler() {
         const hour = now.hour;
         const dateStr = now.toDateStr();
 
+        // 0. Pre-fetch refresh asia77
         const allBrands = await getBrands(tenant.id);
         const asia77Brands = allBrands.filter(b => b.engine === 'asia77');
-        if (asia77Brands.length === 0) continue;
-
-        // 0. Pre-fetch refresh: invalidate panel cache
         for (const brand of asia77Brands) {
           await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
         }
 
-        // 1. Fetch fresh
-        logger.info({ tenant: tenant.slug, hour, engine: 'asia77' }, 'Asia77 fetch starting');
-        await fetchAllBrands(dateStr, hour, tenant.id, 'asia77');
+        // 1. Fetch asia77 brands (syntech sudah di-fetch di :00)
+        if (asia77Brands.length > 0) {
+          logger.info({ tenant: tenant.slug, hour, engine: 'asia77' }, 'Asia77 fetch starting');
+          await fetchAllBrands(dateStr, hour, tenant.id, 'asia77');
+        }
 
-        // 2. Recovery
+        // 2. Recovery (semua engine)
         await recoverMissingHours(dateStr, hour, tenant.id);
 
-        // 3. Render + send
-        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id, 'asia77');
+        // 3. Kirim report SEMUA brand bareng (tanpa engineFilter)
+        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id);
       } catch (err) {
-        logger.error({ tenant: tenant.slug, err: err.message }, 'Asia77 fetch+report failed');
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Fetch+report pipeline failed');
       }
     }
   }, { timezone: defaultTz }));
