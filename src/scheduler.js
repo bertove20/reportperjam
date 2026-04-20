@@ -66,12 +66,17 @@ export async function startScheduler() {
         const now = DateTime.now();
         const hour = now.hour;
         const dateStr = now.toDateStr();
+        logger.info({ tenant: tenant.slug, hour }, ':03 pipeline starting');
 
-        // 0. Pre-fetch refresh asia77
+        // 0. Pre-fetch refresh asia77 (per-brand try/catch supaya 1 gagal tidak block lainnya)
         const allBrands = await getBrands(tenant.id);
         const asia77Brands = allBrands.filter(b => b.engine === 'asia77');
         for (const brand of asia77Brands) {
-          await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
+          try {
+            await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
+          } catch (err) {
+            logger.warn({ brand: brand.key, err: err.message }, 'Pre-fetch keepalive failed, continuing');
+          }
         }
 
         // 1. Fetch asia77 brands (syntech sudah di-fetch di :00)
@@ -84,7 +89,9 @@ export async function startScheduler() {
         await recoverMissingHours(dateStr, hour, tenant.id);
 
         // 3. Kirim report SEMUA brand bareng (tanpa engineFilter)
+        logger.info({ tenant: tenant.slug, hour }, 'Sending reports');
         await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id);
+        logger.info({ tenant: tenant.slug, hour }, ':03 pipeline complete');
       } catch (err) {
         logger.error({ tenant: tenant.slug, err: err.message }, 'Fetch+report pipeline failed');
       }
