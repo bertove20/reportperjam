@@ -286,7 +286,7 @@ EOF
 
 ```bash
 cd /var/www/html
-git clone https://github.com/official-panen138/reportperjam.git
+git clone https://github.com/bertove20/reportperjam.git
 cd reportperjam
 
 # Install backend dependencies

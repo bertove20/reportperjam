@@ -4,7 +4,7 @@
 # Domain: report.grup138.com
 #
 # Jalankan di VPS:
-#   curl -sL https://raw.githubusercontent.com/official-panen138/reportperjam/main/scripts/vps-install.sh | bash
+#   curl -sL https://raw.githubusercontent.com/bertove20/reportperjam/main/scripts/vps-install.sh | bash
 #
 # Atau jika sudah clone:
 #   bash scripts/vps-install.sh
@@ -82,7 +82,7 @@ if [ -d "$APP_DIR" ]; then
   git pull origin main
 else
   cd /opt
-  git clone https://github.com/official-panen138/reportperjam.git
+  git clone https://github.com/bertove20/reportperjam.git
   cd $APP_DIR
 fi
 
