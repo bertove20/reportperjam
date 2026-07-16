@@ -95,9 +95,11 @@ export async function fetchAllBrands(dateStr, hour, tenantId = null, engineFilte
 
 /**
  * Fetch FINISH (hour=24) untuk semua brand
+ * @param {string} [engineFilter] — 'asia77'|'syntech'|null. Kalau di-set, hanya fetch brand dengan engine itu.
  */
-export async function fetchAllBrandsFinish(yesterdayDateStr, tenantId = null) {
-  const brands = await getBrands(tenantId);
+export async function fetchAllBrandsFinish(yesterdayDateStr, tenantId = null, engineFilter = null) {
+  let brands = await getBrands(tenantId);
+  if (engineFilter) brands = brands.filter(b => b.engine === engineFilter);
 
   for (const brand of brands) {
     const start = Date.now();

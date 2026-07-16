@@ -49,16 +49,10 @@ export async function startScheduler() {
     }
   }, { timezone: defaultTz }));
 
-  // ─── :03 Asia77 fetch + SEMUA brand kirim report (jam 1-23) ───
-  // Pipeline:
-  //   1. Refresh session asia77 (invalidate server cache)
-  //   2. Fetch asia77 brands (data fresh setelah cache clear)
-  //   3. Recovery missing hours (semua engine)
-  //   4. Kirim report SEMUA brand (syntech data sudah di-fetch di :00, asia77 baru saja)
-  //
-  // Hasilnya: semua report (syntech + asia77) terkirim di waktu yang sama ke Telegram.
-  // Syntech data maks 3 menit stale (fetch :00, render :03) — acceptable karena
-  // angka kumulatif panel syntech tidak berubah drastis dalam 3 menit.
+  // ─── :03 Syntech kirim report (jam 1-23) ───
+  // Syntech data sudah di-fetch di :00 (panel real-time). Di sini tinggal recovery
+  // + kirim report syntech. Asia77 TIDAK di sini — data panel asia77 delay, jadi
+  // pengambilan data + kirim report-nya dimundurkan 20 menit ke :23 (cron berikutnya).
   jobs.push(cron.schedule('3 1-23 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
@@ -66,11 +60,47 @@ export async function startScheduler() {
         const now = DateTime.now();
         const hour = now.hour;
         const dateStr = now.toDateStr();
-        logger.info({ tenant: tenant.slug, hour }, ':03 pipeline starting');
 
-        // 0. Pre-fetch refresh asia77 (per-brand try/catch supaya 1 gagal tidak block lainnya)
-        const allBrands = await getBrands(tenant.id);
-        const asia77Brands = allBrands.filter(b => b.engine === 'asia77');
+        const syntechBrands = (await getBrands(tenant.id)).filter(b => b.engine === 'syntech');
+        if (syntechBrands.length === 0) continue;
+
+        logger.info({ tenant: tenant.slug, hour }, ':03 syntech pipeline starting');
+
+        // 1. Recovery (isi jam yang kosong dari data yang ada)
+        await recoverMissingHours(dateStr, hour, tenant.id);
+
+        // 2. Kirim report syntech saja
+        logger.info({ tenant: tenant.slug, hour, engine: 'syntech' }, 'Sending syntech reports');
+        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id, 'syntech');
+        logger.info({ tenant: tenant.slug, hour }, ':03 syntech pipeline complete');
+      } catch (err) {
+        logger.error({ tenant: tenant.slug, err: err.message }, ':03 syntech pipeline failed');
+      }
+    }
+  }, { timezone: defaultTz }));
+
+  // ─── :23 Asia77 fetch + kirim report (jam 1-23) — mundur 20 menit dari syntech ───
+  // Data asia77 dari panel delay, jadi pengambilan data perjam + kirim report-nya
+  // dimundurkan 20 menit (dari :03 ke :23) supaya angka yang diambil sudah ter-update panel.
+  // Pipeline:
+  //   1. Keepalive/refresh session asia77 (invalidate server cache)
+  //   2. Fetch asia77 brands (data fresh setelah delay + cache clear)
+  //   3. Recovery missing hours
+  //   4. Kirim report asia77 saja
+  jobs.push(cron.schedule('23 1-23 * * *', async () => {
+    const tenants = await getActiveTenants();
+    for (const tenant of tenants) {
+      try {
+        const now = DateTime.now();
+        const hour = now.hour;
+        const dateStr = now.toDateStr();
+
+        const asia77Brands = (await getBrands(tenant.id)).filter(b => b.engine === 'asia77');
+        if (asia77Brands.length === 0) continue;
+
+        logger.info({ tenant: tenant.slug, hour }, ':23 asia77 pipeline starting');
+
+        // 1. Pre-fetch refresh asia77 (per-brand try/catch supaya 1 gagal tidak block lainnya)
         for (const brand of asia77Brands) {
           try {
             await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
@@ -79,26 +109,27 @@ export async function startScheduler() {
           }
         }
 
-        // 1. Fetch asia77 brands (syntech sudah di-fetch di :00)
-        if (asia77Brands.length > 0) {
-          logger.info({ tenant: tenant.slug, hour, engine: 'asia77' }, 'Asia77 fetch starting');
-          await fetchAllBrands(dateStr, hour, tenant.id, 'asia77');
-        }
+        // 2. Fetch asia77 brands
+        logger.info({ tenant: tenant.slug, hour, engine: 'asia77' }, 'Asia77 fetch starting');
+        await fetchAllBrands(dateStr, hour, tenant.id, 'asia77');
 
-        // 2. Recovery (semua engine)
+        // 3. Recovery (isi jam yang kosong)
         await recoverMissingHours(dateStr, hour, tenant.id);
 
-        // 3. Kirim report SEMUA brand bareng (tanpa engineFilter)
-        logger.info({ tenant: tenant.slug, hour }, 'Sending reports');
-        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id);
-        logger.info({ tenant: tenant.slug, hour }, ':03 pipeline complete');
+        // 4. Kirim report asia77 saja
+        logger.info({ tenant: tenant.slug, hour, engine: 'asia77' }, 'Sending asia77 reports');
+        await sendTimReports(hour, dateStr, now.yesterday().toDateStr(), null, tenant.id, 'asia77');
+        logger.info({ tenant: tenant.slug, hour }, ':23 asia77 pipeline complete');
       } catch (err) {
-        logger.error({ tenant: tenant.slug, err: err.message }, 'Fetch+report pipeline failed');
+        logger.error({ tenant: tenant.slug, err: err.message }, ':23 asia77 pipeline failed');
       }
     }
   }, { timezone: defaultTz }));
 
-  // ─── 00:05 FINISH ───
+  // ─── 00:05 FINISH (syntech only) ───
+  // Syntech panel real-time, FINISH bisa langsung dikirim normal di 00:05.
+  // Asia77 di-skip di sini — datanya delay di pergantian hari, jadi di-fetch ulang
+  // & dikirim di 00:27 (lihat cron berikutnya). Grup diberi info report asia77 menyusul.
   jobs.push(cron.schedule('5 0 * * *', async () => {
     const tenants = await getActiveTenants();
     for (const tenant of tenants) {
@@ -107,17 +138,75 @@ export async function startScheduler() {
         const yesterdayStr = now.yesterday().toDateStr();
         const dayBeforeStr = now.minus(2).toDateStr();
 
-        await fetchAllBrandsFinish(yesterdayStr, tenant.id);
-        await sendTimReports(0, yesterdayStr, dayBeforeStr, null, tenant.id);
+        // Syntech FINISH — fetch + kirim normal
+        await fetchAllBrandsFinish(yesterdayStr, tenant.id, 'syntech');
+        await sendTimReports(0, yesterdayStr, dayBeforeStr, null, tenant.id, 'syntech');
 
-        // Referral report harian per divisi — kirim untuk data kemarin
+        // Info ke grup: report asia77 menyusul ±00:30 (data panel delay)
+        const asia77Brands = (await getBrands(tenant.id)).filter(b => b.engine === 'asia77');
+        if (asia77Brands.length > 0) {
+          try {
+            const groupId = await getSetting('tg_report_group', 'report', tenant.id) || process.env.TG_REPORT_GROUP;
+            if (groupId) {
+              const { sendMessage } = await import('./tim/tim-sender.js');
+              const names = asia77Brands.map(b => b.name || b.key).join(', ');
+              const text = [
+                '⏳ <b>Laporan FINISH menyusul</b>',
+                '',
+                `Report untuk <b>${names}</b> akan dikirim sekitar pukul <b>00:30 WIB</b>.`,
+                'Menunggu data panel diperbarui (delay di pergantian hari).',
+              ].join('\n');
+              await sendMessage(groupId, text, tenant.id);
+            }
+          } catch (err) {
+            logger.warn({ tenant: tenant.slug, err: err.message }, 'Asia77 delay-notice failed');
+          }
+        }
+      } catch (err) {
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant FINISH (syntech) failed');
+      }
+    }
+  }, { timezone: defaultTz }));
+
+  // ─── 00:30 FINISH (asia77) + Referral ───
+  // Asia77 panel delay update data harian di pergantian hari, jadi FINISH-nya
+  // di-fetch ulang & dikirim di sini (bukan 00:05). Waktu 00:30 sama persis dengan
+  // info yang diumumkan ke grup di 00:05 supaya tidak ada selisih data.
+  // Keepalive dulu supaya session tidak terlogout sebelum fetch.
+  // Referral report (juga asia77-based) ikut di sini.
+  jobs.push(cron.schedule('30 0 * * *', async () => {
+    const tenants = await getActiveTenants();
+    for (const tenant of tenants) {
+      try {
+        const now = DateTime.now();
+        const yesterdayStr = now.yesterday().toDateStr();
+        const dayBeforeStr = now.minus(2).toDateStr();
+
+        const asia77Brands = (await getBrands(tenant.id)).filter(b => b.engine === 'asia77');
+
+        // 0. Keepalive dulu — pastikan session asia77 tidak terlogout sebelum fetch
+        for (const brand of asia77Brands) {
+          try {
+            await keepaliveAsia77(brand.key, brand.domain, brand.cookieHeader, brand.userId);
+          } catch (err) {
+            logger.warn({ brand: brand.key, err: err.message }, 'Pre-FINISH keepalive failed, continuing');
+          }
+        }
+
+        // 1. Asia77 FINISH — fetch ulang (data panel sudah update) + kirim
+        if (asia77Brands.length > 0) {
+          await fetchAllBrandsFinish(yesterdayStr, tenant.id, 'asia77');
+          await sendTimReports(0, yesterdayStr, dayBeforeStr, null, tenant.id, 'asia77');
+        }
+
+        // 2. Referral report harian per divisi — kirim untuk data kemarin
         try {
           await sendReferralReports(yesterdayStr, tenant.id);
         } catch (err) {
           logger.error({ tenant: tenant.slug, err: err.message }, 'Referral report failed');
         }
       } catch (err) {
-        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant FINISH failed');
+        logger.error({ tenant: tenant.slug, err: err.message }, 'Tenant FINISH (asia77) failed');
       }
     }
   }, { timezone: defaultTz }));
@@ -163,10 +252,10 @@ export async function startScheduler() {
     }
   }, { timezone: defaultTz }));
 
-  // ─── Monthly cleanup: tanggal 1 jam 00:30, hapus semua log dari bulan lalu & sebelumnya ───
-  // Waktu 00:30 dipilih supaya dijalankan setelah cron FINISH (00:05)
+  // ─── Monthly cleanup: tanggal 1 jam 00:50, hapus semua log dari bulan lalu & sebelumnya ───
+  // Waktu 00:50 dipilih supaya dijalankan setelah cron FINISH asia77 (00:30)
   // selesai dan sebelum fetch hourly (01:00) mulai.
-  jobs.push(cron.schedule('30 0 1 * *', async () => {
+  jobs.push(cron.schedule('50 0 1 * *', async () => {
     try {
       const deleted = await cleanLogsBeforeCurrentMonth();
       logger.info({ deleted }, 'Monthly log cleanup: logs from previous months deleted');

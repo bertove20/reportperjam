@@ -82,6 +82,30 @@ export async function sendPhoto(chatId, pngBuffer, caption = '', tenantId = null
 }
 
 /**
+ * Kirim pesan teks ke Telegram group (mendukung HTML parse mode).
+ * Dipakai untuk notifikasi/info ke grup report (mis. info report asia77 delay).
+ */
+export async function sendMessage(chatId, text, tenantId = null, parseMode = 'HTML') {
+  const token = await getBotToken(tenantId);
+  if (!token) throw new Error('TG_BOT_TOKEN not configured');
+
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const body = { chat_id: chatId, text, disable_web_page_preview: true };
+  if (parseMode) body.parse_mode = parseMode;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!result.ok) {
+    throw new Error(`Telegram sendMessage: ${result.description || 'unknown'} (code=${result.error_code})`);
+  }
+  return result;
+}
+
+/**
  * Test Telegram connection — kirim pesan teks
  */
 export async function sendTestMessage(chatId, text = '✅ Test connection berhasil!', tenantId = null) {

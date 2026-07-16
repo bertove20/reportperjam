@@ -84,9 +84,10 @@ tenant ──┬── divisions ──┬── users
 |---|---|---|
 | `0 1-23 * * *` | `:00` jam 1-23 | **Syntech fetch**: fetch brand syntech saja (panel real-time, tidak ada cache). Snapshot tepat di pergantian jam = paling akurat. **Belum kirim report** — data disimpan ke DB, report ditahan sampai `:03`. |
 | `3 1-23 * * *` | `:03` jam 1-23 | **Asia77 fetch + SEMUA brand kirim report**: refresh session asia77 → fetch asia77 brands (data fresh setelah cache clear) → recovery missing hours (semua engine) → render + kirim report **semua brand** (syntech + asia77 bareng). Hasilnya semua report muncul di waktu yang sama di Telegram. |
-| `5 0 * * *` | `00:05` | **FINISH + Referral**: fetch FINISH (snapshot kemarin hari penuh) → kirim Tim report FINISH → trigger `sendReferralReports` per divisi |
+| `5 0 * * *` | `00:05` | **FINISH syntech**: fetch + kirim Tim report FINISH brand **syntech saja** (panel real-time). Lalu kirim info ke grup bahwa report asia77 menyusul ±00:30. |
+| `30 0 * * *` | `00:30` | **FINISH asia77 + Referral**: keepalive session asia77 → fetch ulang FINISH brand **asia77** (data panel sudah update setelah delay pergantian hari) → kirim report → trigger `sendReferralReports` per divisi. Waktu sama persis dengan info yang diumumkan di 00:05. |
 | `*/10 * * * *` | every 10 min | **Keepalive**: ping panel asia77 (`/clearMessage` + `/sse/user/balance`) supaya cookie session tidak expire (7 ping/jam: 6x dedicated + 1x pre-fetch refresh). Syntech tidak butuh (JWT stateless). Alert ke Telegram kalau 3x gagal berturut (30 menit). |
-| `30 0 1 * *` | tanggal 1 jam `00:30` | **Cleanup logs**: `DELETE FROM job_logs WHERE created_at < date_trunc('month', NOW())` |
+| `50 0 1 * *` | tanggal 1 jam `00:50` | **Cleanup logs**: `DELETE FROM job_logs WHERE created_at < date_trunc('month', NOW())` |
 
 ### Alur pipeline hourly (2 cron, 1 batch kirim)
 
